@@ -11,15 +11,15 @@ DirectX12 + Vulkan 크로스 플랫폼 3D 렌더링 엔진.
 
 ---
 
-## 확정 아키텍처 (Q10, 2026-03-16)
+## 확정 아키텍처 (2026-05-01 기준)
 
 ```
-Engine.lib      ← 렌더러, RHI, IApplication 인터페이스
-Application.lib ← 게임 로직, IApplication 구현 (플랫폼 코드 없음)
+Engine.lib      ← 렌더러, RHI 인터페이스 (IRenderDevice 등)
+Application.lib ← IApplication 인터페이스 정의
 
 Platforms/
-├── ExecWindows.exe ← WinMain → Engine 초기화 → Application 실행
-└── ExecAndroid     ← ANativeActivity → Engine 초기화 → Application 실행
+├── ExecWindows.exe ← WindowsApplication(IApplication 구현) + WinMain Loop
+└── ExecAndroid     ← AndroidApplication(IApplication 구현) + NativeActivity Loop
 ```
 
 **빌드 의존성:**
@@ -28,6 +28,11 @@ Engine.lib ← Application.lib ← ExecWindows.exe
                               ← ExecAndroid
 ```
 
+**IApplication 설계 원칙:**
+- Loop 호출 주체 = Platform (ExecWindows / ExecAndroid)
+- 구현체 = 각 Exec 프로젝트 (HWND / ANativeWindow 직접 사용)
+- Engine은 IApplication을 알지 못함 (렌더링 인프라만 제공)
+
 ---
 
 ## 현재 디렉토리 구조
@@ -35,20 +40,28 @@ Engine.lib ← Application.lib ← ExecWindows.exe
 ```
 VaEngine/
 ├── VaEngine.slnx
+├── ThirdParty/
+│   ├── Main.py                    ← 자동화 코드 진입점
+│   └── GeneratePublicHeader.py    ← InnerDependencies.h 갱신 + Private cpp 자동 생성
 ├── Engine/
-│   ├── Public/          ← (예정) IApplication.h, IRenderDevice.h, Math/
+│   ├── Public/
+│   │   ├── InnerDependencies.h    ← 자동 관리 (빌드 시 갱신)
+│   │   └── Interfaces/            ← (예정) IRenderDevice.h 등
 │   ├── Private/
 │   │   ├── RHI/
-│   │   │   ├── DX12/   ← (예정) DX12RenderDevice
-│   │   │   └── Vulkan/ ← (예정) VulkanRenderDevice
-│   │   └── Core/       ← (예정) MemoryPool 등 플랫폼 무관 내부 구현
-│   └── Engine.cpp       ← 현재 VS 기본 골격만 존재
+│   │   │   ├── DX12/              ← (예정) DX12RenderDevice
+│   │   │   └── Vulkan/            ← (예정) VulkanRenderDevice
+│   │   └── Core/                  ← (예정) 플랫폼 무관 내부 구현
+│   └── Engine.cpp
 ├── Application/
-│   └── Application.cpp  ← 현재 VS 기본 골격만 존재
+│   ├── Public/Interfaces/
+│   │   └── IExecute.h             ← 순수 인터페이스 (Application 소유)
+│   └── Application.cpp
 └── Platforms/
     ├── ExecWindows/
-    │   └── ExecWindows.cpp  ← Win32 WinMain 기본 틀 존재
-    └── ExecAndroid/         ← Gradle 빌드 환경 설정 완료
+    │   ├── WindowsApplication     ← IApplication 구현체 (예정)
+    │   └── ExecWindows.cpp        ← WinMain + Loop
+    └── ExecAndroid/               ← Gradle 빌드 환경 설정 완료
 ```
 
 > **Engine = 플랫폼 무관 원칙**: `windows.h`, Win32 API는 Engine에 침투하지 않음.
@@ -60,8 +73,8 @@ VaEngine/
 
 | 프로젝트 | 타입 | 빌드 | 코드 작성 |
 |---|---|---|---|
-| Engine | Static Library | ✅ 성공 | ⬜ 미작성 |
-| Application | Static Library | ✅ 성공 | ⬜ 미작성 |
+| Engine | Static Library | ✅ 성공 | 🔧 자동화 환경 구성 완료 |
+| Application | Static Library | ✅ 성공 | 🔧 IExecute.h 작성 완료 |
 | ExecWindows | Executable | ✅ 성공 | ⬜ 기본 틀만 |
 | ExecAndroid | Android (Gradle) | ✅ 성공 | ⬜ 기본 틀만 |
 
@@ -81,8 +94,19 @@ VaEngine/
 ```cpp
 class IRenderDevice { ... };               // Engine/Public/ — 플랫폼 무관
 class DX12RenderDevice : IRenderDevice {}; // Engine/Private/RHI/DX12/ — Windows
-class VulkanRenderDevice : IRenderDevice {}; // Engine/Private/RHI/Vulkan/ — Android
+class VulkanRenderDevice : IRenderDevice {}; // Engine/Private/RHI/Vulkan/ — Android/Linux
 ```
+
+Engine이 모든 그래픽 API 소스를 소유. 패키징 시 `CMakePresets.json` + `option(USE_DX12/USE_VULKAN)` 으로 백엔드 선택.
+
+| 대상 | USE_DX12 | USE_VULKAN |
+|---|---|---|
+| Windows | ON | OFF |
+| Android / Linux | OFF | ON |
+
+### 플랫폼 핸들 추상화
+`FNativeWindowInfo` (`Engine/Public/`) — `void* Handle` + `EPlatform` enum. 플랫폼 헤더 없음.
+`#if` 는 `Engine/Private/RHI/` 구현부에만 존재.
 
 ### 플랫폼별 라이프사이클
 | | ExecWindows | ExecAndroid |
@@ -135,4 +159,6 @@ Agent/
 | [2026-03-16.md](2026-03-16.md) | Q10 아키텍처 확정 전 설계 토론 (Q1~Q10) |
 | [2026-04-22_Q&A.md](2026-04-22_Q&A.md) | Public/Private 분리, RHI 구조, Platform 위치, 라이프사이클, 빌드 워크플로우 |
 | [2026-04-22_Log.md](2026-04-22_Log.md) | Q10 아키텍처 재구성, 프로젝트 4개 생성, Android 빌드 오류 해결 |
-| [2026-04-30_Log.md](2026-04-30_Log.md) | 현재 세션 (참조 설정 + IApplication 작성 예정) |
+| [2026-04-30_Q&A.md](2026-04-30_Q&A.md) | ExecAndroid 참조 경고, IApplication 혼용 문제, 플랫폼별 구현 구조 확정 |
+| [2026-04-30_Log.md](2026-04-30_Log.md) | 참조 설정, 자동화 도입, IApplication 아키텍처 재설계, RHI 백엔드 아키텍처 확정 |
+| [2026-05-01_Q&A.md](2026-05-01_Q&A.md) | CMake 파일 수집 방식, RHI 백엔드 CMake 제어, FNativeWindowInfo 구조, Vulkan/DX12 Surface 생성 |

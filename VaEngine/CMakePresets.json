@@ -1,0 +1,61 @@
+{
+  "version": 3,
+  "configurePresets": [
+    {
+      "name": "windows-dx12",
+      "displayName": "Windows DX12",
+      "generator": "Visual Studio 17 2022",
+      "architecture": {
+        "value": "x64",
+        "strategy": "set"
+      },
+      "binaryDir": "${sourceDir}/Build/windows-dx12",
+      "cacheVariables": {
+        "USE_DX12": "ON",
+        "USE_VULKAN": "OFF"
+      }
+    },
+    {
+      "name": "windows-vulkan",
+      "displayName": "Windows Vulkan",
+      "generator": "Visual Studio 17 2022",
+      "architecture": {
+        "value": "x64",
+        "strategy": "set"
+      },
+      "binaryDir": "${sourceDir}/Build/windows-vulkan",
+      "cacheVariables": {
+        "USE_DX12": "OFF",
+        "USE_VULKAN": "ON"
+      }
+    },
+    {
+      "name": "android",
+      "displayName": "Android Vulkan",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/Build/android",
+      "cacheVariables": {
+        "USE_DX12": "OFF",
+        "USE_VULKAN": "ON",
+        "CMAKE_SYSTEM_NAME": "Android",
+        "CMAKE_ANDROID_NDK": "${sourceDir}/Platforms/ExecAndroid/ndk",
+        "ANDROID_ABI": "arm64-v8a",
+        "ANDROID_PLATFORM": "android-26"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "windows-dx12",
+      "configurePreset": "windows-dx12"
+    },
+    {
+      "name": "windows-vulkan",
+      "configurePreset": "windows-vulkan"
+    },
+    {
+      "name": "android",
+      "configurePreset": "android"
+    }
+  ]
+}

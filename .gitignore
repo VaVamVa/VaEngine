@@ -463,16 +463,22 @@ FodyWeavers.xsd
 # Local SDK path (machine-specific)
 local.properties
 
+# NDK for CMake
+**/ndk/
+
 # Gradle cache
 .gradle/
-
-# Generated from .gradle.template by VS build
-build.gradle
-app/build.gradle
 
 # Android build outputs
 *.apk
 *.aab
+
+#################### CMake ####################
+Build/             # CMakePresets.json binaryDir — 프리셋별 빌드 출력 루트
+out/               # VS가 CMake 구성 시 자동 생성하는 빌드 출력 디렉토리
+CMakeCache.txt     # CMake 구성 캐시 (경로/옵션 저장)
+CMakeFiles/        # CMake 내부 빌드 스크립트 및 임시 파일
+cmake_install.cmake # cmake --install 시 사용되는 설치 스크립트
 
 #################### MCP ####################
 # Byte-compiled / optimized / DLL files
