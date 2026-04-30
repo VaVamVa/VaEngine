@@ -2,12 +2,12 @@ if(NOT ANDROID)
     return()
 endif()
 
-add_library(ExecAndroid SHARED)
-
 file(GLOB_RECURSE EXECANDROID_SOURCES
     CONFIGURE_DEPENDS
-    "*.cpp"
+    "Source/*.cpp"
 )
+
+add_library(ExecAndroid SHARED)
 
 target_sources(ExecAndroid PRIVATE ${EXECANDROID_SOURCES})
 

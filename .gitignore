@@ -463,7 +463,7 @@ FodyWeavers.xsd
 # Local SDK path (machine-specific)
 local.properties
 
-# NDK for CMake
+# Android NDK for CMake
 **/ndk/
 
 # Gradle cache

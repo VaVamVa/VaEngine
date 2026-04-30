@@ -2,7 +2,7 @@ add_library(Application STATIC)
 
 file(GLOB_RECURSE APPLICATION_SOURCES
     CONFIGURE_DEPENDS
-    "Private/**/*.cpp"
+    "Private/*.cpp"
 )
 
 target_sources(Application PRIVATE

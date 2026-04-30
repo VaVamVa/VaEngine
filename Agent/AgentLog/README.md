@@ -1,6 +1,6 @@
 # VaEngine — 프로젝트 현황판
 
-> 마지막 업데이트: 2026-04-30
+> 마지막 업데이트: 2026-05-01
 
 ---
 
@@ -13,25 +13,32 @@ DirectX12 + Vulkan 크로스 플랫폼 3D 렌더링 엔진.
 
 ## 확정 아키텍처 (2026-05-01 기준)
 
+**레이어 순서:**
 ```
-Engine.lib      ← 렌더러, RHI 인터페이스 (IRenderDevice 등)
-Application.lib ← IApplication 인터페이스 정의
-
-Platforms/
-├── ExecWindows.exe ← WindowsApplication(IApplication 구현) + WinMain Loop
-└── ExecAndroid     ← AndroidApplication(IApplication 구현) + NativeActivity Loop
+Platform (OS 및 Target Properties 결정)
+  → Engine  (Target에 맞는 API 채택, IExecute 정의)
+    → Application (Client — 앱 로직)
 ```
 
 **빌드 의존성:**
 ```
 Engine.lib ← Application.lib ← ExecWindows.exe
-                              ← ExecAndroid
+                              ← ExecAndroid.so
 ```
 
-**IApplication 설계 원칙:**
+**각 레이어 역할:**
+
+| 레이어 | 프로젝트 | 역할 |
+|---|---|---|
+| Platform | ExecWindows / ExecAndroid | OS 진입점, Loop, IExecute 구현체 |
+| Engine | Engine.lib | RHI 인터페이스, IExecute 정의, 플랫폼 무관 인프라 |
+| Client | Application.lib | 앱 로직 (Engine API 사용) |
+
+**IExecute 설계 원칙:**
+- `IExecute.h` → `Engine/Public/Interfaces/` 소유
 - Loop 호출 주체 = Platform (ExecWindows / ExecAndroid)
 - 구현체 = 각 Exec 프로젝트 (HWND / ANativeWindow 직접 사용)
-- Engine은 IApplication을 알지 못함 (렌더링 인프라만 제공)
+- Application은 Engine API를 사용하는 클라이언트 코드
 
 ---
 
@@ -39,29 +46,34 @@ Engine.lib ← Application.lib ← ExecWindows.exe
 
 ```
 VaEngine/
-├── VaEngine.slnx
+├── CMakeLists.txt              ← 최상위. option(USE_DX12/USE_VULKAN), 전체 add_subdirectory
+├── CMakePresets.json           ← windows-dx12 / windows-vulkan / android 프리셋
+├── README.md                   ← NDK / Vulkan SDK 설치 가이드
 ├── ThirdParty/
-│   ├── Main.py                    ← 자동화 코드 진입점
-│   └── GeneratePublicHeader.py    ← InnerDependencies.h 갱신 + Private cpp 자동 생성
+│   ├── Main.py                 ← 자동화 코드 진입점
+│   └── GeneratePublicHeader.py ← InnerDependencies.h 갱신 + Private cpp 자동 생성
 ├── Engine/
+│   ├── CMakeLists.txt          ← GLOB_RECURSE, 조건부 RHI 소스, PCH
 │   ├── Public/
-│   │   ├── InnerDependencies.h    ← 자동 관리 (빌드 시 갱신)
-│   │   └── Interfaces/            ← (예정) IRenderDevice.h 등
+│   │   ├── InnerDependencies.h ← 자동 관리 (빌드 시 갱신)
+│   │   └── Interfaces/         ← IExecute.h, IRenderDevice.h, ICommandQueue.h 등
 │   ├── Private/
 │   │   ├── RHI/
-│   │   │   ├── DX12/              ← (예정) DX12RenderDevice
-│   │   │   └── Vulkan/            ← (예정) VulkanRenderDevice
-│   │   └── Core/                  ← (예정) 플랫폼 무관 내부 구현
+│   │   │   ├── DX12/           ← (구현 예정) DX12RenderDevice
+│   │   │   └── Vulkan/         ← (구현 예정) VulkanRenderDevice
+│   │   └── Core/               ← (예정) 플랫폼 무관 내부 구현
 │   └── Engine.cpp
 ├── Application/
-│   ├── Public/Interfaces/
-│   │   └── IExecute.h             ← 순수 인터페이스 (Application 소유)
+│   ├── CMakeLists.txt
 │   └── Application.cpp
 └── Platforms/
     ├── ExecWindows/
-    │   ├── WindowsApplication     ← IApplication 구현체 (예정)
-    │   └── ExecWindows.cpp        ← WinMain + Loop
-    └── ExecAndroid/               ← Gradle 빌드 환경 설정 완료
+    │   ├── CMakeLists.txt      ← WIN32 가드, WIN32_EXECUTABLE
+    │   └── ExecWindows.cpp     ← WinMain + Loop (IExecute 구현체 예정)
+    └── ExecAndroid/
+        ├── CMakeLists.txt      ← ANDROID 가드, SHARED
+        ├── ndk/                ← 로컬 NDK (gitignore)
+        └── app/build.gradle    ← externalNativeBuild 연결 완료
 ```
 
 > **Engine = 플랫폼 무관 원칙**: `windows.h`, Win32 API는 Engine에 침투하지 않음.
@@ -74,7 +86,7 @@ VaEngine/
 | 프로젝트 | 타입 | 빌드 | 코드 작성 |
 |---|---|---|---|
 | Engine | Static Library | ✅ 성공 | 🔧 자동화 환경 구성 완료 |
-| Application | Static Library | ✅ 성공 | 🔧 IExecute.h 작성 완료 |
+| Application | Static Library | ✅ 성공 | 🔧 클라이언트 코드 골격 |
 | ExecWindows | Executable | ✅ 성공 | ⬜ 기본 틀만 |
 | ExecAndroid | Android (Gradle) | ✅ 성공 | ⬜ 기본 틀만 |
 
@@ -88,7 +100,7 @@ VaEngine/
 | 인터페이스 (`I~~`) | 구현체 (`DX12Device`, `VulkanDevice`) |
 | 외부가 쓰는 타입 (`Handle`, `Vector`) | 내부 헬퍼, `d3d12.h` / `vulkan.h` 포함 파일 |
 
-판단 기준: **"Application.lib 코드가 이 헤더를 `#include`할 필요가 있는가?"**
+판단 기준: **"Engine 외부(Application / ExecPlatform)가 이 헤더를 `#include`할 필요가 있는가?"**
 
 ### 렌더링 백엔드 추상화
 ```cpp
@@ -138,7 +150,7 @@ Engine이 모든 그래픽 API 소스를 소유. 패키징 시 `CMakePresets.jso
 
 - **언어**: C++20, HLSL
 - **IDE**: Visual Studio 2022
-- **빌드**: CMake (추후 도입 예정, 현재 VS 프로젝트)
+- **빌드**: CMake + CMakePresets.json
 - **SDK**: Windows SDK / DirectX 12 최신, Android NDK
 
 ---
@@ -161,4 +173,5 @@ Agent/
 | [2026-04-22_Log.md](2026-04-22_Log.md) | Q10 아키텍처 재구성, 프로젝트 4개 생성, Android 빌드 오류 해결 |
 | [2026-04-30_Q&A.md](2026-04-30_Q&A.md) | ExecAndroid 참조 경고, IApplication 혼용 문제, 플랫폼별 구현 구조 확정 |
 | [2026-04-30_Log.md](2026-04-30_Log.md) | 참조 설정, 자동화 도입, IApplication 아키텍처 재설계, RHI 백엔드 아키텍처 확정 |
-| [2026-05-01_Q&A.md](2026-05-01_Q&A.md) | CMake 파일 수집 방식, RHI 백엔드 CMake 제어, FNativeWindowInfo 구조, Vulkan/DX12 Surface 생성 |
+| [2026-05-01_Q&A.md](2026-05-01_Q&A.md) | CMake 파일 수집 방식, RHI 백엔드 CMake 제어, FNativeWindowInfo 구조, Vulkan/DX12 Surface 생성, NDK 설치, Android Vulkan 링크 |
+| [2026-05-01_Log.md](2026-05-01_Log.md) | 세션 종료 상태 및 다음 세션 시작 항목 |

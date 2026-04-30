@@ -13,6 +13,23 @@ DirectX12 + Vulkan 크로스 플랫폼 3D 렌더링 엔진.
 
 ---
 
+## DirectX 12
+
+Visual Studio Installer에서 **"C++를 사용한 데스크톱 개발"** 워크로드 설치 시 자동으로 포함됨. 별도 설치 불필요.
+
+---
+
+## Vulkan SDK 설치 (windows-vulkan 프리셋 사용 시)
+
+- 권장 버전: **1.3.x 최신 안정 버전**
+- 다운로드: [https://vulkan.lunarg.com/sdk/home](https://vulkan.lunarg.com/sdk/home)
+
+설치 후 `VULKAN_SDK` 환경변수가 자동 등록되며 CMake가 자동으로 탐색함.
+
+> `windows-dx12` 프리셋만 사용하는 경우 Vulkan SDK 설치 불필요.
+
+---
+
 ## Android 빌드를 위한 NDK 설치
 
 Android 프리셋(`android`)으로 빌드하려면 NDK가 필요함.
