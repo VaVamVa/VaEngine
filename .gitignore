@@ -459,6 +459,21 @@ FodyWeavers.xsd
 **/SourceArt/**/*.png
 **/SourceArt/**/*.tga
 
+#################### Android ####################
+# Local SDK path (machine-specific)
+local.properties
+
+# Gradle cache
+.gradle/
+
+# Generated from .gradle.template by VS build
+build.gradle
+app/build.gradle
+
+# Android build outputs
+*.apk
+*.aab
+
 #################### MCP ####################
 # Byte-compiled / optimized / DLL files
 **/__pycache__/
