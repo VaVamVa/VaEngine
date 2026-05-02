@@ -19,4 +19,10 @@ protected:
 private:
     HWND hWnd;
     HINSTANCE hInstance;
+
+	std::unique_ptr<class IRenderDevice>    renderDevice;
+	std::unique_ptr<class ICommandQueue>    commandQueue;
+	std::unique_ptr<class IFence>           frameFence;
+	std::unique_ptr<class ISwapChain>       swapChain;
+	std::unique_ptr<class ICommandList>     commandList;
 };

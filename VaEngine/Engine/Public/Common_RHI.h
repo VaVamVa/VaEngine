@@ -1,7 +1,22 @@
 #pragma once
 
 #include <cstdint>
-#include "Common_Display.h"
+
+struct NativeDisplayInfo
+{
+	enum class EPlatform { None, Windows, Android, iOS, Max };
+
+	EPlatform platform;
+	union
+	{
+		// HWND(Windows) || ANativeWindow(Android)
+		void* Handle;
+		uintptr_t	RawData;
+	};
+
+	// HINSTANCE(Windows) || nullptr(Android)
+	void* Display;
+};
 
 enum EPixelFormat : uint32_t
 {
@@ -14,16 +29,16 @@ enum EPixelFormat : uint32_t
 
 struct SwapChainDesc
 {
-	NativeDisplayInfo	displayInfo;
-	uint32_t			width;
-	uint32_t			height;
-	uint32_t			format;
-	uint32_t			bufferCount = 2;
-	EPixelFormat		pixelFormat = EPixelFormat::R8G8B8A8_UNORM;
-	bool				bIsWindowed = true;
+	NativeDisplayInfo		displayInfo;
+	class ICommandQueue*	RegisteredQueue;
+	uint32_t				bufferCount;
+	uint32_t				width;
+	uint32_t				height;
+	EPixelFormat			pixelFormat;
+	bool					bIsWindowed;
 };
 
-enum class ECommandQueueType : uint8_t
+enum class ECommandQueueType : uint32_t
 {
 	None = 0,
 	Graphics = 1,

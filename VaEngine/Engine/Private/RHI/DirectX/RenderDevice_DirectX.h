@@ -1,7 +1,7 @@
 #pragma once
 
-#include "Common_DirectX.h"
 #include "Interfaces/IRenderDevice.h"
+#include "Common_DirectX.h"
 
 class RenderDevice_DirectX : public IRenderDevice
 {
@@ -15,15 +15,18 @@ public:
 	std::unique_ptr<ICommandList>	CreateCommandList(const CommandListDesc& desc) override;
 
 	ID3D12Device* GetDevice() const { return device.Get(); }
+	IDXGIFactory6* GetFactory() const { return factory.Get(); }
+	IDXGIAdapter4* GetAdapter() const { return adapter.Get(); }
+
 
 private:
 	void EnableDebugLayer();
-	void CreateDevice();
 	void CreateFactory();
 	void PickAdapter();
+	void CreateDevice();
 	
 private:
-	ComPtr<ID3D12Device>	device;
-	ComPtr<IDXGIAdapter4>	adapter;
 	ComPtr<IDXGIFactory6>	factory;
+	ComPtr<IDXGIAdapter4>	adapter;
+	ComPtr<ID3D12Device>	device;
 };

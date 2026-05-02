@@ -1,6 +1,6 @@
 # VaEngine — 프로젝트 현황판
 
-> 마지막 업데이트: 2026-05-01
+> 마지막 업데이트: 2026-05-03
 
 ---
 
@@ -48,19 +48,31 @@ Engine.lib ← Application.lib ← ExecWindows.exe
 VaEngine/
 ├── CMakeLists.txt              ← 최상위. option(USE_DX12/USE_VULKAN), 전체 add_subdirectory
 ├── CMakePresets.json           ← windows-dx12 / windows-vulkan / android 프리셋
-├── README.md                   ← NDK / Vulkan SDK 설치 가이드
 ├── ThirdParty/
-│   ├── Main.py                 ← 자동화 코드 진입점
-│   └── GeneratePublicHeader.py ← InnerDependencies.h 갱신 + Private cpp 자동 생성
+│   └── DirectX-Headers/       ← d3dx12 헬퍼 헤더 (MS 공식, header-only)
 ├── Engine/
-│   ├── CMakeLists.txt          ← GLOB_RECURSE, 조건부 RHI 소스, PCH
+│   ├── CMakeLists.txt          ← FILE_SET HEADERS, 조건부 RHI 소스, compile_definitions
 │   ├── Public/
-│   │   ├── InnerDependencies.h ← 자동 관리 (빌드 시 갱신)
-│   │   └── Interfaces/         ← IExecute.h, IRenderDevice.h, ICommandQueue.h 등
-│   ├── Private/
+│   │   ├── Common_Display.h    ← NativeDisplayInfo (EPlatform, Handle, Display)
+│   │   ├── Common_RHI.h        ← SwapChainDesc, CommandQueueDesc, CommandListDesc
 │   │   ├── RHI/
-│   │   │   ├── DX12/           ← (구현 예정) DX12RenderDevice
-│   │   │   └── Vulkan/         ← (구현 예정) VulkanRenderDevice
+│   │   │   └── RHILoader.h     ← namespace RHI::CreateRenderDevice() 선언
+│   │   └── Interfaces/
+│   │       ├── IExecute.h      ← 앱 생명주기 인터페이스
+│   │       ├── IRenderDevice.h ← GPU 초기화 + RHI 객체 Factory
+│   │       ├── ISwapChain.h    ← Present / Resize / GetCurrentBackBufferIndex
+│   │       ├── ICommandQueue.h ← ExecuteCommandLists / Signal / Wait
+│   │       ├── IFence.h        ← Signal / Wait / GetCompletedValue
+│   │       └── ICommandList.h  ← 렌더링 명령 기록 (추후 구체화)
+│   ├── Private/
+│   │   ├── InnerDependencies.h ← Engine 내부 공통 의존성
+│   │   ├── RHI/
+│   │   │   ├── RHILoader.cpp   ← USE_DX12/USE_VULKAN 분기, 구현체 생성
+│   │   │   ├── DirectX/        ← USE_DX12일 때만 컴파일
+│   │   │   │   ├── Common_DirectX.h        ← ComPtr, DXGI, D3D12, d3dx12
+│   │   │   │   ├── RenderDevice_DirectX.h  ← DX12 구현체 선언
+│   │   │   │   └── RenderDevice_DirectX.cpp
+│   │   │   └── Vulkan/         ← USE_VULKAN일 때만 컴파일
 │   │   └── Core/               ← (예정) 플랫폼 무관 내부 구현
 │   └── Engine.cpp
 ├── Application/
@@ -68,16 +80,18 @@ VaEngine/
 │   └── Application.cpp
 └── Platforms/
     ├── ExecWindows/
-    │   ├── CMakeLists.txt      ← WIN32 가드, WIN32_EXECUTABLE
-    │   └── ExecWindows.cpp     ← WinMain + Loop (IExecute 구현체 예정)
+    │   ├── CMakeLists.txt      ← WIN32 가드, WIN32_EXECUTABLE, UNICODE 정의
+    │   ├── ExecWindows.cpp     ← WinMain + PeekMessage 루프 + IExecute 연결
+    │   └── Private/
+    │       ├── Execute.h       ← IExecute 구현체
+    │       └── Execute.cpp
     └── ExecAndroid/
         ├── CMakeLists.txt      ← ANDROID 가드, SHARED
-        ├── ndk/                ← 로컬 NDK (gitignore)
-        └── app/build.gradle    ← externalNativeBuild 연결 완료
+        └── ndk/                ← 로컬 NDK (gitignore)
 ```
 
 > **Engine = 플랫폼 무관 원칙**: `windows.h`, Win32 API는 Engine에 침투하지 않음.
-> 플랫폼 코드는 ExecWindows / ExecAndroid 프로젝트 내부에만 위치.
+> DX12 전용 헤더(`d3d12.h` 등)는 `Engine/Private/RHI/DirectX/` 내부에만 존재.
 
 ---
 
@@ -85,10 +99,10 @@ VaEngine/
 
 | 프로젝트 | 타입 | 빌드 | 코드 작성 |
 |---|---|---|---|
-| Engine | Static Library | ✅ 성공 | 🔧 자동화 환경 구성 완료 |
-| Application | Static Library | ✅ 성공 | 🔧 클라이언트 코드 골격 |
-| ExecWindows | Executable | ✅ 성공 | ⬜ 기본 틀만 |
-| ExecAndroid | Android (Gradle) | ✅ 성공 | ⬜ 기본 틀만 |
+| Engine | Static Library | ✅ 성공 | 🔧 RHI 인터페이스 완성, DX12 구현 진행 중 |
+| Application | Static Library | ✅ 성공 | ⬜ 기본 틀만 |
+| ExecWindows | Executable | ✅ 성공 | ✅ WinMain 구현 완료, 창 실행 확인 |
+| ExecAndroid | Android | ✅ 성공 | ⬜ 기본 틀만 |
 
 ---
 
@@ -97,28 +111,36 @@ VaEngine/
 ### Public / Private 헤더 분리
 | Public (외부 노출) | Private (Engine 내부 전용) |
 |---|---|
-| 인터페이스 (`I~~`) | 구현체 (`DX12Device`, `VulkanDevice`) |
-| 외부가 쓰는 타입 (`Handle`, `Vector`) | 내부 헬퍼, `d3d12.h` / `vulkan.h` 포함 파일 |
+| 인터페이스 (`I~~`) | 구현체 (`DX12RenderDevice`, `VulkanRenderDevice`) |
+| 공통 구조체 (`NativeDisplayInfo`, `SwapChainDesc`) | DX12/Vulkan 전용 헤더 (`d3d12.h`, `vulkan.h`) |
 
 판단 기준: **"Engine 외부(Application / ExecPlatform)가 이 헤더를 `#include`할 필요가 있는가?"**
 
 ### 렌더링 백엔드 추상화
 ```cpp
-class IRenderDevice { ... };               // Engine/Public/ — 플랫폼 무관
-class DX12RenderDevice : IRenderDevice {}; // Engine/Private/RHI/DX12/ — Windows
-class VulkanRenderDevice : IRenderDevice {}; // Engine/Private/RHI/Vulkan/ — Android/Linux
+class IRenderDevice { ... };                    // Engine/Public/ — 플랫폼 무관
+class RenderDevice_DirectX : IRenderDevice {};  // Engine/Private/RHI/DirectX/ — Windows
+class RenderDevice_Vulkan : IRenderDevice {};   // Engine/Private/RHI/Vulkan/ — Android/Linux
 ```
 
-Engine이 모든 그래픽 API 소스를 소유. 패키징 시 `CMakePresets.json` + `option(USE_DX12/USE_VULKAN)` 으로 백엔드 선택.
+Engine이 모든 그래픽 API 소스를 소유. `CMakePresets.json` + `option(USE_DX12/USE_VULKAN)`으로 백엔드 선택.
 
 | 대상 | USE_DX12 | USE_VULKAN |
 |---|---|---|
 | Windows | ON | OFF |
 | Android / Linux | OFF | ON |
 
+### RHI 팩토리
+```cpp
+// 소비자 코드
+auto device = RHI::CreateRenderDevice();   // namespace RHI
+device->Initialize();
+auto swapChain = device->CreateSwapChain(desc);
+```
+
 ### 플랫폼 핸들 추상화
-`FNativeWindowInfo` (`Engine/Public/`) — `void* Handle` + `EPlatform` enum. 플랫폼 헤더 없음.
-`#if` 는 `Engine/Private/RHI/` 구현부에만 존재.
+`NativeDisplayInfo` (`Engine/Public/Common_Display.h`) — `void* Handle` + `EPlatform` enum. 플랫폼 헤더 없음.
+`#if`는 `Engine/Private/RHI/` 구현부에만 존재.
 
 ### 플랫폼별 라이프사이클
 | | ExecWindows | ExecAndroid |
@@ -149,7 +171,7 @@ Engine이 모든 그래픽 API 소스를 소유. 패키징 시 `CMakePresets.jso
 ## 환경
 
 - **언어**: C++20, HLSL
-- **IDE**: Visual Studio 2022
+- **IDE**: Rider (JetBrains) / Visual Studio 2022
 - **빌드**: CMake + CMakePresets.json
 - **SDK**: Windows SDK / DirectX 12 최신, Android NDK
 
@@ -168,10 +190,11 @@ Agent/
 
 | 파일 | 내용 |
 |---|---|
-| [2026-03-16.md](2026-03-16.md) | Q10 아키텍처 확정 전 설계 토론 (Q1~Q10) |
 | [2026-04-22_Q&A.md](2026-04-22_Q&A.md) | Public/Private 분리, RHI 구조, Platform 위치, 라이프사이클, 빌드 워크플로우 |
 | [2026-04-22_Log.md](2026-04-22_Log.md) | Q10 아키텍처 재구성, 프로젝트 4개 생성, Android 빌드 오류 해결 |
 | [2026-04-30_Q&A.md](2026-04-30_Q&A.md) | ExecAndroid 참조 경고, IApplication 혼용 문제, 플랫폼별 구현 구조 확정 |
-| [2026-04-30_Log.md](2026-04-30_Log.md) | 참조 설정, 자동화 도입, IApplication 아키텍처 재설계, RHI 백엔드 아키텍처 확정 |
-| [2026-05-01_Q&A.md](2026-05-01_Q&A.md) | CMake 파일 수집 방식, RHI 백엔드 CMake 제어, FNativeWindowInfo 구조, Vulkan/DX12 Surface 생성, NDK 설치, Android Vulkan 링크 |
-| [2026-05-01_Log.md](2026-05-01_Log.md) | 세션 종료 상태 및 다음 세션 시작 항목 |
+| [2026-04-30_Log.md](2026-04-30_Log.md) | 참조 설정, IApplication 아키텍처 재설계, RHI 백엔드 아키텍처 확정, FNativeWindowInfo 구조체 설계 |
+| [2026-05-01_Q&A.md](2026-05-01_Q&A.md) | CMake 파일 수집, RHI 백엔드 CMake 제어, FNativeWindowInfo, Vulkan/DX12 Surface, NDK, Android Vulkan, 레이어 순서 확정 |
+| [2026-05-02_Q&A.md](2026-05-02_Q&A.md) | IExecute 구현체 명명, WinMain 설계, RHI 인터페이스 설계, DX12 개요, Factory 패턴, FILE_SET, USE_DX12 매크로, DirectX-Headers |
+| [2026-05-02_Log.md](2026-05-02_Log.md) | WinMain 구현 완료, RHI 인터페이스 전체 선언, RHILoader 팩토리, DX12 환경 구성 |
+| [2026-05-03_Log.md](2026-05-03_Log.md) | DX12RenderDevice 구현 시작 예정 |
