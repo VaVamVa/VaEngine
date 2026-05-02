@@ -1,28 +1,13 @@
 #pragma once
-#include <cstdint>
 
-struct FNativeDisplayInfo
-{
-	enum class EPlatform { None, Windows, Android, iOS, Max };
-
-	EPlatform platform;
-	union
-	{
-		// HWND(Windows) || ANativeWindow(Android)
-		void*		Handle;
-		uint32_t	RawData;
-	};
-
-	// HINSTANCE(Windows) || nullptr(Android)
-	void* Display;
-};
+#include "Common_Display.h"
 
 class IExecute {
 public:
 	virtual ~IExecute() = default;
 	
 #pragma region Lifecycle
-	virtual void OnInitialize(FNativeDisplayInfo displayInfo) = 0;
+	virtual void OnInitialize(NativeDisplayInfo displayInfo) = 0;
 	virtual void OnDestroy() = 0;
 
 	virtual void OnLoop() = 0;

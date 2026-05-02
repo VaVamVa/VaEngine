@@ -4,7 +4,7 @@
 
 class Execute : public IExecute {
 public:
-    void OnInitialize(FNativeDisplayInfo displayInfo) override;
+    void OnInitialize(NativeDisplayInfo displayInfo) override;
     void OnDestroy() override;
 
     void OnLoop() override;

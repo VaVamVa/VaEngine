@@ -6,7 +6,6 @@
 namespace 
 {
     std::unique_ptr<IExecute> execEngine = nullptr;
-    
 }
 
 LRESULT CALLBACK    WndProc(HWND, UINT, WPARAM, LPARAM);
@@ -51,8 +50,8 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
 
     execEngine = std::make_unique<Execute>();
     
-    FNativeDisplayInfo displayInfo = FNativeDisplayInfo();
-    displayInfo.platform = FNativeDisplayInfo::EPlatform::Windows;
+    NativeDisplayInfo displayInfo = NativeDisplayInfo();
+    displayInfo.platform = NativeDisplayInfo::EPlatform::Windows;
     displayInfo.Display = hInstance;
     displayInfo.Handle = hWnd;
     execEngine->OnInitialize(displayInfo);

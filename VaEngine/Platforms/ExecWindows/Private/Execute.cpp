@@ -1,6 +1,6 @@
 ﻿#include "Execute.h"
 
-void Execute::OnInitialize(FNativeDisplayInfo displayInfo)
+void Execute::OnInitialize(NativeDisplayInfo displayInfo)
 {
 
 }
