@@ -15,10 +15,10 @@ endif()
 # android_main은 이 라이브러리에 의해 호출됩니다.
 # ============================================================
 add_library(android_native_app_glue STATIC
-    ${ANDROID_NDK}/sources/android/native_app_glue/android_native_app_glue.c
+    "${CMAKE_SOURCE_DIR}/Platforms/ExecAndroid/ndk/sources/android/native_app_glue/android_native_app_glue.c"
 )
 target_include_directories(android_native_app_glue PUBLIC
-    ${ANDROID_NDK}/sources/android/native_app_glue
+    "${CMAKE_SOURCE_DIR}/Platforms/ExecAndroid/ndk/sources/android/native_app_glue"
 )
 
 # ============================================================
@@ -48,3 +48,59 @@ target_link_libraries(ExecAndroid PRIVATE
 target_link_options(ExecAndroid PRIVATE
     -u ANativeActivity_onCreate
 )
+
+# ============================================================
+# Vulkan GLSL → SPIR-V 셰이더 컴파일 (Android preset 전용)
+#
+# ExecWindows/CMakeLists.txt와 동일한 역할을 합니다.
+# Android preset으로 빌드할 때 Windows-Vulkan preset 없이도
+# 셰이더가 자동으로 컴파일되어 APK assets에 배치됩니다.
+#
+# glslc는 호스트(Windows) 도구입니다.
+# find_program은 항상 호스트를 검색하므로 크로스컴파일 중에도
+# Windows 호스트의 Vulkan SDK glslc가 실행됩니다.
+# ============================================================
+if(USE_VULKAN AND GLSLC_EXECUTABLE AND VULKAN_SHADER_SOURCE_DIR)
+    message(STATUS "[VaEngine] Android Vulkan 셰이더 컴파일 설정 중...")
+
+    set(SHADER_SOURCES
+        "${VULKAN_SHADER_SOURCE_DIR}/mesh.vert"
+        "${VULKAN_SHADER_SOURCE_DIR}/mesh.frag"
+    )
+
+    set(SHADER_INTERMEDIATE_DIR "${CMAKE_BINARY_DIR}/ShaderIntermediate/Vulkan")
+    file(MAKE_DIRECTORY "${SHADER_INTERMEDIATE_DIR}")
+
+    set(ANDROID_SHADER_ASSET_DIR
+        "${CMAKE_SOURCE_DIR}/Platforms/ExecAndroid/app/src/main/assets/Shaders/Vulkan")
+
+    foreach(SHADER_SRC ${SHADER_SOURCES})
+        get_filename_component(SHADER_NAME "${SHADER_SRC}" NAME)
+        set(SHADER_SPV "${SHADER_INTERMEDIATE_DIR}/${SHADER_NAME}.spv")
+
+        # glslc로 GLSL → SPIR-V 컴파일
+        add_custom_command(
+            OUTPUT  "${SHADER_SPV}"
+            COMMAND "${GLSLC_EXECUTABLE}" "${SHADER_SRC}" -o "${SHADER_SPV}"
+            DEPENDS "${SHADER_SRC}"
+            COMMENT "셰이더 컴파일: ${SHADER_NAME} → ${SHADER_NAME}.spv"
+            VERBATIM
+        )
+
+        # 컴파일된 .spv를 Android APK assets 폴더로 복사
+        add_custom_command(
+            TARGET ExecAndroid POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E make_directory "${ANDROID_SHADER_ASSET_DIR}"
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "${SHADER_SPV}"
+                "${ANDROID_SHADER_ASSET_DIR}/${SHADER_NAME}.spv"
+            COMMENT "셰이더 복사 [Android]: ${SHADER_NAME}.spv → assets/Shaders/Vulkan/"
+            VERBATIM
+        )
+
+        list(APPEND SHADER_SPV_FILES "${SHADER_SPV}")
+    endforeach()
+
+    add_custom_target(VulkanShaders ALL DEPENDS ${SHADER_SPV_FILES})
+    add_dependencies(ExecAndroid VulkanShaders)
+endif()

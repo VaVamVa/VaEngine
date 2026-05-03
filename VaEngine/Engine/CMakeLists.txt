@@ -87,17 +87,39 @@ if(USE_VULKAN)
             ${Vulkan_INCLUDE_DIRS}
             Private/RHI/Vulkan
         )
+    endif()
 
-        # glslc 경로를 CACHE에 노출하여 ExecWindows CMakeLists에서 재사용합니다.
-        find_program(GLSLC_EXECUTABLE
-            NAMES glslc
-            HINTS "${Vulkan_INCLUDE_DIRS}/../bin" ENV VULKAN_SDK
-            PATH_SUFFIXES "bin"
-            CACHE STRING "glslc SPIR-V 컴파일러 경로"
-        )
-        # 셰이더 소스 디렉토리도 CACHE로 노출합니다.
-        set(VULKAN_SHADER_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/Shaders/Vulkan"
-            CACHE PATH "Vulkan GLSL 셰이더 소스 디렉토리" FORCE)
+    # ----------------------------------------------------------------
+    # glslc 탐색 — 플랫폼(타겟)과 무관하게 항상 호스트에서 찾습니다.
+    #
+    # find_program은 CMAKE_CROSSCOMPILING 여부와 관계없이
+    # 항상 호스트 머신을 검색합니다.
+    # 따라서 Android 크로스컴파일 preset에서도 Windows 호스트의
+    # Vulkan SDK에 있는 glslc를 올바르게 찾습니다.
+    #
+    # 탐색 힌트 우선순위:
+    #   1. Windows-Vulkan preset: find_package(Vulkan)이 설정한 Vulkan_INCLUDE_DIRS
+    #   2. 환경 변수 VULKAN_SDK (수동 SDK 설치 시)
+    # ----------------------------------------------------------------
+    find_program(GLSLC_EXECUTABLE
+        NAMES glslc
+        HINTS
+            "${Vulkan_INCLUDE_DIRS}/../Bin"   # Windows-Vulkan preset (Vulkan SDK Bin)
+            "${Vulkan_INCLUDE_DIRS}/../bin"
+            "$ENV{VULKAN_SDK}/Bin"            # Android preset (환경 변수 경유)
+            "$ENV{VULKAN_SDK}/bin"
+        CACHE STRING "glslc SPIR-V 컴파일러 경로"
+    )
+    # 셰이더 소스 디렉토리를 CACHE로 노출합니다.
+    # ExecWindows·ExecAndroid CMakeLists 양쪽에서 참조합니다.
+    set(VULKAN_SHADER_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/Shaders/Vulkan"
+        CACHE PATH "Vulkan GLSL 셰이더 소스 디렉토리" FORCE)
+
+    if(NOT GLSLC_EXECUTABLE)
+        message(WARNING
+            "[VaEngine] glslc를 찾을 수 없습니다. "
+            "Vulkan SDK가 설치되어 있고 VULKAN_SDK 환경 변수가 설정되어 있는지 확인하세요. "
+            "SPIR-V 셰이더를 수동으로 빌드해야 합니다.")
     endif()
 endif()
 

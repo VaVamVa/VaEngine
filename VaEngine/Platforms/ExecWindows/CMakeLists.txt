@@ -39,6 +39,11 @@ if(USE_VULKAN AND GLSLC_EXECUTABLE AND VULKAN_SHADER_SOURCE_DIR)
     set(SHADER_INTERMEDIATE_DIR "${CMAKE_BINARY_DIR}/ShaderIntermediate/Vulkan")
     file(MAKE_DIRECTORY "${SHADER_INTERMEDIATE_DIR}")
 
+    # Android assets 출력 경로
+    # ExecWindows 빌드 시 .spv를 Android APK용 assets 폴더에도 자동 배포합니다.
+    set(ANDROID_SHADER_ASSET_DIR
+        "${CMAKE_SOURCE_DIR}/Platforms/ExecAndroid/app/src/main/assets/Shaders/Vulkan")
+
     foreach(SHADER_SRC ${SHADER_SOURCES})
         get_filename_component(SHADER_NAME "${SHADER_SRC}" NAME)
         set(SHADER_SPV "${SHADER_INTERMEDIATE_DIR}/${SHADER_NAME}.spv")
@@ -52,7 +57,7 @@ if(USE_VULKAN AND GLSLC_EXECUTABLE AND VULKAN_SHADER_SOURCE_DIR)
             VERBATIM
         )
 
-        # 컴파일된 .spv를 실행파일 옆 Shaders/Vulkan/ 디렉토리로 복사
+        # ---- Windows 실행파일 옆으로 복사 ----
         # $<TARGET_FILE_DIR:ExecWindows>: Debug/ 또는 Release/ 경로를 자동으로 해결
         add_custom_command(
             TARGET ExecWindows POST_BUILD
@@ -61,7 +66,20 @@ if(USE_VULKAN AND GLSLC_EXECUTABLE AND VULKAN_SHADER_SOURCE_DIR)
             COMMAND ${CMAKE_COMMAND} -E copy_if_different
                 "${SHADER_SPV}"
                 "$<TARGET_FILE_DIR:ExecWindows>/Shaders/Vulkan/${SHADER_NAME}.spv"
-            COMMENT "셰이더 복사: ${SHADER_NAME}.spv → 실행파일 디렉토리"
+            COMMENT "셰이더 복사 [Windows]: ${SHADER_NAME}.spv → 실행파일 디렉토리"
+            VERBATIM
+        )
+
+        # ---- Android assets 폴더로 복사 ----
+        # Gradle이 이 경로를 APK에 자동으로 패키징합니다.
+        # ExecWindows를 빌드하면 Android APK용 셰이더도 함께 갱신됩니다.
+        add_custom_command(
+            TARGET ExecWindows POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E make_directory "${ANDROID_SHADER_ASSET_DIR}"
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "${SHADER_SPV}"
+                "${ANDROID_SHADER_ASSET_DIR}/${SHADER_NAME}.spv"
+            COMMENT "셰이더 복사 [Android]: ${SHADER_NAME}.spv → assets/Shaders/Vulkan/"
             VERBATIM
         )
 
@@ -71,8 +89,4 @@ if(USE_VULKAN AND GLSLC_EXECUTABLE AND VULKAN_SHADER_SOURCE_DIR)
     add_custom_target(VulkanShaders ALL DEPENDS ${SHADER_SPV_FILES})
     add_dependencies(ExecWindows VulkanShaders)
 
-else()
-    if(USE_VULKAN AND NOT GLSLC_EXECUTABLE)
-        message(WARNING "[VaEngine] glslc를 찾을 수 없습니다. Vulkan SDK($ENV{VULKAN_SDK})가 설치되었는지 확인하세요. SPIR-V 셰이더를 수동으로 빌드해야 합니다.")
-    endif()
 endif()
