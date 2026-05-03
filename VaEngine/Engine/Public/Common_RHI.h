@@ -9,12 +9,15 @@ struct NativeDisplayInfo
 	EPlatform platform;
 	union
 	{
-		// HWND(Windows) || ANativeWindow(Android)
-		void* Handle;
-		uintptr_t	RawData;
+		// Windows : HWND (렌더링 대상 창 핸들)
+		// Android : ANativeWindow* (android_app->window)
+		void*      Handle;
+		uintptr_t  RawData;
 	};
 
-	// HINSTANCE(Windows) || nullptr(Android)
+	// Windows : HINSTANCE (현재 프로세스 모듈 핸들)
+	// Android : AAssetManager* (android_app->activity->assetManager)
+	//           셰이더 등 APK assets 파일을 읽기 위해 사용
 	void* Display;
 };
 

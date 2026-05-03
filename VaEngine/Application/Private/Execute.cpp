@@ -189,11 +189,20 @@ void Execute::InitVulkan3DScene()
         sizeof(Pipeline_Vulkan::UniformBufferObject),
         VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT);
 
+    // Android에서는 displayInfo.Display에 AAssetManager*가 담겨 있습니다.
+    // PC(Windows)에서는 nullptr이며, Pipeline이 파일 시스템 로딩으로 분기합니다.
+#ifdef ANDROID
+    void* assetMgr = displayInfo.Display; // AAssetManager*
+#else
+    void* assetMgr = nullptr;
+#endif
+
     pipeline = std::make_unique<Pipeline_Vulkan>();
     pipeline->Initialize(physDev, dev,
         vkSC->GetRenderPass(), vkSC->GetExtent(),
         "Shaders/Vulkan/mesh.vert.spv",
-        "Shaders/Vulkan/mesh.frag.spv");
+        "Shaders/Vulkan/mesh.frag.spv",
+        assetMgr);
 
     descriptorSet = pipeline->CreateDescriptorSet(
         uniformBuffer->GetBuffer(),

@@ -26,6 +26,13 @@
         #define NOMINMAX  // windows.h의 min/max 매크로가 std::min/max와 충돌하는 것을 방지
     #endif
     #include <windows.h>
+#elif defined(ANDROID)
+    // Android NDK의 ANativeWindow 타입 정의를 가져옵니다.
+    // ANativeWindow: Android에서 렌더링 대상 창을 나타내는 핸들 (Windows의 HWND에 대응)
+    #include <android/native_window.h>
+    // AAssetManager 타입 정의를 가져옵니다.
+    // AAssetManager: APK 내 assets/ 폴더의 파일을 읽기 위한 핸들
+    #include <android/asset_manager.h>
 #endif
 
 #include <vulkan/vulkan.h>
@@ -40,6 +47,15 @@
     // 플랫폼 Surface Extension 이름을 상수로 정의해 둡니다.
     // SwapChain이 VkInstance 생성 시 이 Extension을 요청합니다.
     #define VK_PLATFORM_SURFACE_EXTENSION_NAME VK_KHR_WIN32_SURFACE_EXTENSION_NAME
+
+#elif defined(ANDROID)
+    // Android용 Surface 확장 헤더.
+    // VkAndroidSurfaceCreateInfoKHR, vkCreateAndroidSurfaceKHR() 선언이 여기에 있습니다.
+    #include <vulkan/vulkan_android.h>
+
+    // Android Surface Extension 이름.
+    // RenderDevice_Vulkan::CreateInstance()가 이 Extension을 요청합니다.
+    #define VK_PLATFORM_SURFACE_EXTENSION_NAME VK_KHR_ANDROID_SURFACE_EXTENSION_NAME
 #endif
 
 // ============================================================

@@ -219,15 +219,35 @@ void SwapChain_Vulkan::Resize(uint32_t width, uint32_t height)
 // ============================================================
 // [내부] CreateSurface
 // ============================================================
-void SwapChain_Vulkan::CreateSurface(VkInstance instance, void* hWnd)
+void SwapChain_Vulkan::CreateSurface(VkInstance instance, void* windowHandle)
 {
 #ifdef _WIN32
+    // ---- Windows: Win32 Surface 생성 ----
+    //
+    // VkWin32SurfaceCreateInfoKHR: Windows 창(HWND)과 Vulkan을 연결하는 구조체.
+    // hwnd      = 렌더링 대상 창 핸들 (NativeDisplayInfo.Handle에서 전달됨)
+    // hinstance = 현재 프로세스의 모듈 핸들 (DX12의 DXGI 팩토리 생성 시와 유사한 역할)
     VkWin32SurfaceCreateInfoKHR surfaceInfo{};
     surfaceInfo.sType     = VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR;
-    surfaceInfo.hwnd      = static_cast<HWND>(hWnd);
+    surfaceInfo.hwnd      = static_cast<HWND>(windowHandle);
     surfaceInfo.hinstance = GetModuleHandle(nullptr);
     VK_CHECK(vkCreateWin32SurfaceKHR(instance, &surfaceInfo, nullptr, &surface));
+
+#elif defined(ANDROID)
+    // ---- Android: Android Surface 생성 ----
+    //
+    // ANativeWindow: Android에서 렌더링 가능한 창 오브젝트 (Windows의 HWND에 대응).
+    // android_native_app_glue의 android_app->window 필드로부터 전달됩니다.
+    //
+    // VkAndroidSurfaceCreateInfoKHR: ANativeWindow*를 Vulkan Surface로 변환하는 구조체.
+    // Windows의 VkWin32SurfaceCreateInfoKHR과 구조는 동일하나, 필드 이름이 다릅니다.
+    VkAndroidSurfaceCreateInfoKHR surfaceInfo{};
+    surfaceInfo.sType  = VK_STRUCTURE_TYPE_ANDROID_SURFACE_CREATE_INFO_KHR;
+    surfaceInfo.window = static_cast<ANativeWindow*>(windowHandle);
+    VK_CHECK(vkCreateAndroidSurfaceKHR(instance, &surfaceInfo, nullptr, &surface));
+
 #else
+    (void)instance; (void)windowHandle;
     throw std::runtime_error("[Vulkan] 이 플랫폼은 Surface 생성을 지원하지 않습니다.");
 #endif
 }

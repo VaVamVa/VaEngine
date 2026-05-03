@@ -18,10 +18,12 @@ Pipeline_Vulkan::~Pipeline_Vulkan()
 void Pipeline_Vulkan::Initialize(
     VkPhysicalDevice physicalDevice, VkDevice device,
     VkRenderPass renderPass, VkExtent2D viewportExtent,
-    const std::string& vertSpvPath, const std::string& fragSpvPath)
+    const std::string& vertSpvPath, const std::string& fragSpvPath,
+    void* assetManager)
 {
-    deviceHandle      = device;
-    physicalDevHandle = physicalDevice;
+    deviceHandle       = device;
+    physicalDevHandle  = physicalDevice;
+    assetManagerHandle = assetManager; // Android: AAssetManager*, PC: nullptr
 
     // 셰이더가 접근하는 Descriptor(Uniform Buffer 등)의 레이아웃 선언
     CreateDescriptorSetLayout();
@@ -147,8 +149,9 @@ void Pipeline_Vulkan::CreateGraphicsPipeline(
     // ---- 1. 셰이더 모듈 생성 ----
     // SPIR-V 바이트코드를 로드하여 VkShaderModule로 변환합니다.
     // DX12의 DXIL bytecode를 D3D12_SHADER_BYTECODE에 담는 것과 유사합니다.
-    auto vertCode   = LoadSpirvFile(vertSpvPath);
-    auto fragCode   = LoadSpirvFile(fragSpvPath);
+    // assetManagerHandle: PC에서는 nullptr(파일 시스템), Android에서는 AAssetManager*(APK assets)
+    auto vertCode   = LoadSpirvFile(vertSpvPath, assetManagerHandle);
+    auto fragCode   = LoadSpirvFile(fragSpvPath, assetManagerHandle);
     VkShaderModule vertModule = CreateShaderModule(vertCode);
     VkShaderModule fragModule = CreateShaderModule(fragCode);
 
@@ -326,11 +329,52 @@ VkShaderModule Pipeline_Vulkan::CreateShaderModule(const std::vector<char>& spir
 
 // ============================================================
 // [내부 유틸] LoadSpirvFile
+//
+// 플랫폼에 따라 SPIR-V 바이트코드를 다른 방법으로 로드합니다.
+//
+//   PC (Windows 등):
+//     일반 파일 시스템에서 std::ifstream으로 읽습니다.
+//     path = "Shaders/Vulkan/mesh.vert.spv" (실행파일 기준 상대경로)
+//
+//   Android:
+//     APK 내 assets/ 폴더에서 AAssetManager로 읽습니다.
+//     AAsset: Android APK 내부 파일 핸들 (Windows의 HANDLE에 대응)
+//     path = "Shaders/Vulkan/mesh.vert.spv" (assets/ 기준 상대경로)
 // ============================================================
-std::vector<char> Pipeline_Vulkan::LoadSpirvFile(const std::string& path)
+std::vector<char> Pipeline_Vulkan::LoadSpirvFile(const std::string& path, void* assetManager)
 {
-    // ate: 파일 끝에서 열어 크기를 즉시 알 수 있도록
-    // binary: 줄바꿈 변환 없이 바이트 단위로 읽기
+#ifdef ANDROID
+    // ---- Android: APK assets에서 로드 ----
+    //
+    // AAssetManager_open: assets/ 폴더의 파일을 열어 AAsset* 핸들을 반환합니다.
+    // AASSET_MODE_BUFFER: 파일 전체를 메모리에 버퍼링 (소규모 파일에 적합)
+    AAsset* asset = AAssetManager_open(
+        static_cast<AAssetManager*>(assetManager),
+        path.c_str(),
+        AASSET_MODE_BUFFER);
+
+    if (!asset)
+    {
+        throw std::runtime_error("[Vulkan] APK 에셋에서 SPIR-V를 열 수 없습니다: " + path);
+    }
+
+    // AAsset_getLength: 파일 크기를 바이트 단위로 반환
+    size_t size = static_cast<size_t>(AAsset_getLength(asset));
+    std::vector<char> buffer(size);
+
+    // AAsset_read: 데이터를 buffer로 복사
+    AAsset_read(asset, buffer.data(), size);
+
+    // AAsset_close: 파일 핸들 반환 (std::ifstream의 close()에 대응)
+    AAsset_close(asset);
+    return buffer;
+
+#else
+    // ---- PC: 파일 시스템에서 로드 ----
+    //
+    // ate: 파일 끝에서 열어 파일 크기를 tellg()로 즉시 파악
+    // binary: 줄바꿈 변환 없이 바이트 단위로 읽기 (SPIR-V는 바이너리)
+    (void)assetManager;
     std::ifstream file(path, std::ios::ate | std::ios::binary);
     if (!file.is_open())
     {
@@ -342,4 +386,5 @@ std::vector<char> Pipeline_Vulkan::LoadSpirvFile(const std::string& path)
     file.seekg(0);
     file.read(buffer.data(), static_cast<std::streamsize>(fileSize));
     return buffer;
+#endif
 }

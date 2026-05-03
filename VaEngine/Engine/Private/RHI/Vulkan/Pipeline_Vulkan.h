@@ -48,11 +48,14 @@ public:
     ~Pipeline_Vulkan();
 
     // 파이프라인 초기화
-    // renderPass: SwapChain_Vulkan::GetRenderPass()로 얻은 RenderPass
+    // renderPass:   SwapChain_Vulkan::GetRenderPass()로 얻은 RenderPass
     // vertSpvPath, fragSpvPath: 컴파일된 SPIR-V 파일 경로
+    // assetManager: Android에서 APK assets을 읽기 위한 AAssetManager*.
+    //               PC(Windows)에서는 nullptr (기본값).
     void Initialize(VkPhysicalDevice physicalDevice, VkDevice device,
                     VkRenderPass renderPass, VkExtent2D viewportExtent,
-                    const std::string& vertSpvPath, const std::string& fragSpvPath);
+                    const std::string& vertSpvPath, const std::string& fragSpvPath,
+                    void* assetManager = nullptr);
 
     void Shutdown();
 
@@ -72,11 +75,17 @@ private:
                                 const std::string& vertSpvPath, const std::string& fragSpvPath);
 
     VkShaderModule CreateShaderModule(const std::vector<char>& spirvCode);
-    static std::vector<char> LoadSpirvFile(const std::string& path);
+
+    // assetManager: Android에서 AAssetManager*, PC에서 nullptr
+    static std::vector<char> LoadSpirvFile(const std::string& path, void* assetManager);
 
 private:
     VkDevice              deviceHandle      = VK_NULL_HANDLE;
     VkPhysicalDevice      physicalDevHandle = VK_NULL_HANDLE;
+
+    // AAssetManager*: Android에서 Initialize 시 전달받아 보관.
+    // LoadSpirvFile이 APK assets에서 셰이더를 읽을 때 사용합니다.
+    void*                 assetManagerHandle = nullptr;
 
     // ---- 파이프라인 핵심 객체 ----
 

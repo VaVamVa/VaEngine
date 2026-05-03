@@ -6,9 +6,30 @@
   <application
       android:allowBackup="false"
       android:label="@string/app_name">
-    <activity android:name=".ExecAndroid"
-              android:label="@string/app_name"
-              android:exported="true">
+
+    <!--
+      android.app.NativeActivity: Java 코드 없이 C++ 진입점(android_main)을 직접 실행합니다.
+      android_native_app_glue 라이브러리가 JNI 연결을 자동으로 처리하므로
+      별도의 Java Activity 코드가 필요 없습니다.
+
+      configChanges: 화면 회전/크기 변경 시 Activity를 재시작하지 않고
+                     C++ 코드에서 직접 처리합니다 (창 크기 변경 이벤트로 전달).
+    -->
+    <activity
+        android:name="android.app.NativeActivity"
+        android:label="@string/app_name"
+        android:configChanges="orientation|keyboardHidden|screenSize"
+        android:exported="true">
+
+      <!--
+        android.app.lib_name: NativeActivity가 로드할 공유 라이브러리 이름.
+        "ExecAndroid" → libExecAndroid.so 파일을 로드합니다.
+        이 라이브러리 안에 android_main()이 정의되어 있습니다.
+      -->
+      <meta-data
+          android:name="android.app.lib_name"
+          android:value="ExecAndroid"/>
+
       <intent-filter>
         <action android:name="android.intent.action.MAIN" />
         <category android:name="android.intent.category.LAUNCHER" />
