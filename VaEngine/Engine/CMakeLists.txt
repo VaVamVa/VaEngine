@@ -26,7 +26,7 @@ target_sources(Engine PRIVATE
 
 # DX12 백엔드
 if(USE_DX12)
-    target_compile_definitions(Engine PRIVATE USE_DX12)
+    target_compile_definitions(Engine PUBLIC USE_DX12)
 
     include(FetchContent) # CMake 3.11 이상에서 사용할 수 있는 모듈로, 외부 라이브러리를 쉽게 가져올 수 있도록 도와줍니다.
     FetchContent_Declare(
@@ -55,7 +55,9 @@ endif()
 
 # Vulkan 백엔드
 if(USE_VULKAN)
-    target_compile_definitions(Engine PRIVATE USE_VULKAN)
+    # PUBLIC: ExecWindows·Application 같은 하위 타겟에도 USE_VULKAN 매크로가 전달됩니다.
+    # Execute.cpp 에서 #ifdef USE_VULKAN 분기를 사용할 수 있게 하기 위함입니다.
+    target_compile_definitions(Engine PUBLIC USE_VULKAN)
 
     file(GLOB_RECURSE ENGINE_VULKAN_HEADERS
         CONFIGURE_DEPENDS
@@ -78,6 +80,24 @@ if(USE_VULKAN)
     else()
         find_package(Vulkan REQUIRED)
         target_link_libraries(Engine PRIVATE Vulkan::Vulkan)
+
+        # Vulkan 헤더 경로와 Vulkan RHI 구현 헤더 경로를 하위 타겟에 노출합니다.
+        # ExecWindows가 Pipeline_Vulkan, Buffer_Vulkan 등을 include할 수 있습니다.
+        target_include_directories(Engine PUBLIC
+            ${Vulkan_INCLUDE_DIRS}
+            Private/RHI/Vulkan
+        )
+
+        # glslc 경로를 CACHE에 노출하여 ExecWindows CMakeLists에서 재사용합니다.
+        find_program(GLSLC_EXECUTABLE
+            NAMES glslc
+            HINTS "${Vulkan_INCLUDE_DIRS}/../bin" ENV VULKAN_SDK
+            PATH_SUFFIXES "bin"
+            CACHE STRING "glslc SPIR-V 컴파일러 경로"
+        )
+        # 셰이더 소스 디렉토리도 CACHE로 노출합니다.
+        set(VULKAN_SHADER_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/Shaders/Vulkan"
+            CACHE PATH "Vulkan GLSL 셰이더 소스 디렉토리" FORCE)
     endif()
 endif()
 
