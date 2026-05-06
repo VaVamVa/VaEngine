@@ -2,6 +2,7 @@
 
 #include <cassert>
 #include <stdexcept>
+#include <cstdint>
 
 // ComPtr(WindowsRuntimeLibrary)
 #include <wrl/client.h>

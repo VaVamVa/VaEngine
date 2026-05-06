@@ -1,6 +1,6 @@
 #pragma once
 
-#include "Interfaces/IFence.h"
+#include "RHI/IFence.h"
 #include "Common_DirectX.h"
 
 class Fence_DirectX : public IFence

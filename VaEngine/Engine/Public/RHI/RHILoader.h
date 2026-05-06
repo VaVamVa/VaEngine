@@ -1,7 +1,7 @@
 #pragma once
 
 #include <memory>
-#include "Interfaces/IRenderDevice.h"
+#include "RHI/IRenderDevice.h"
 
 namespace RHI
 {

@@ -10,7 +10,7 @@ android {
         targetSdkVersion 33
         externalNativeBuild {
             cmake {
-                arguments "-DUSE_VULKAN=ON", "-DUSE_DX12=OFF"
+                arguments "-DUSE_VULKAN=ON", "-DUSE_DIRECTX=OFF"
             }
         }
     }

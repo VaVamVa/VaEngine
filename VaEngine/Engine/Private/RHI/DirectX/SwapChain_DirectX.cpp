@@ -2,6 +2,7 @@
 
 #include "RenderDevice_DirectX.h"
 #include "CommandQueue_DirectX.h"
+#include "ResourceView_DirectX.h"
 
 void SwapChain_DirectX::Register(IRenderDevice* inDevice, const SwapChainDesc& desc)
 {
@@ -71,21 +72,20 @@ void SwapChain_DirectX::Resize(uint32_t width, uint32_t height)
 
 }
 
+IRHIResource* SwapChain_DirectX::GetCurrentBackBuffer() const
+{
+	const IRHIResource* backBuffer = static_cast<const IRHIResource*>(&backBuffers[GetCurrentBackBufferIndex()]);
+	return const_cast<IRHIResource*>(backBuffer);
+}
+
 uint32_t SwapChain_DirectX::GetCurrentBackBufferIndex() const
 {
 	return swapChain->GetCurrentBackBufferIndex();
 }
 
-D3D12_CPU_DESCRIPTOR_HANDLE SwapChain_DirectX::GetCurrentBackBufferRTV() const
+IResourceView* SwapChain_DirectX::GetCurrentBackBufferView() const
 {
-	// rtvHeap의 시작점 기준 잡고, 
-	// 현재 백 버퍼 인덱스와 백 버퍼의 간격을 곱하여 현재 백 버퍼에 해당하는 포인터(RTV 핸들)로 이동
-	CD3DX12_CPU_DESCRIPTOR_HANDLE rtvHandle(
-		rtvHeap->GetCPUDescriptorHandleForHeapStart()
-		, GetCurrentBackBufferIndex()
-		, rtvDescriptorSize);
-
-	return rtvHandle;
+	return backBufferViews[GetCurrentBackBufferIndex()].get();
 }
 
 void SwapChain_DirectX::CreateRTV(RenderDevice_DirectX* device)
@@ -107,17 +107,32 @@ void SwapChain_DirectX::CreateRTV(RenderDevice_DirectX* device)
 	assert(bufferCount <= MAX_BUFFER_COUNT);
 	for (uint32_t i = 0; i < bufferCount; ++i)
 	{
-
-		if (FAILED(swapChain->GetBuffer(i, IID_PPV_ARGS(&backBuffers[i]))))
+		ComPtr<ID3D12Resource> backBuffer;
+		if(FAILED(swapChain->GetBuffer(i, IID_PPV_ARGS(&backBuffer))))
 		{
 			throw std::runtime_error("Failed to get back buffer from Swap Chain");
 		}
 
+		backBuffers[i] = TRHIResource<ID3D12Resource>(
+			backBuffer.Detach(),
+			[](ID3D12Resource* ptr) -> void 
+			{
+				if (ptr) { ptr->Release(); }
+			}
+		);
+
 		// RTV 생성 & 힙의 i번째 슬롯에 RTV를 할당
-		device->GetDevice()->CreateRenderTargetView(backBuffers[i].Get(), nullptr, rtvHandle);
+		device->GetDevice()->CreateRenderTargetView(backBuffers[i].GetHandle(), nullptr, rtvHandle);
+
+		ResourceViewDesc desc{
+				.type = EResourceViewType::RenderTargetView,
+		};
+		backBufferViews[i] = std::make_unique<ResourceView_DirectX>(desc, rtvHandle, &backBuffers[i]);
 
 		// 다음 RTV 슬롯으로 포인터 이동
 		rtvHandle.Offset(1, rtvDescriptorSize);
+		
+		//throw std::runtime_error("Failed to get native back buffer resource for RTV creation");
 	}
 	
 }

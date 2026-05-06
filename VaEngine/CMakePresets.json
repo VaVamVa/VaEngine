@@ -2,59 +2,88 @@
   "version": 3,
   "configurePresets": [
     {
-      "name": "windows-dx12",
-      "displayName": "Windows DX12",
-      "generator": "Visual Studio 17 2022",
+      "name": "base",
+      "hidden": true,
+      "description": "이곳에 Graphics API 설정을 추가할 수 있습니다.",
+      "cacheVariables": {
+        "USE_DIRECTX": "OFF",
+        "USE_VULKAN": "OFF",
+        "USE_DEBUGGING": "OFF"
+      }
+    },
+    {
+      "name": "windows-directx",
+      "displayName": "Windows DirectX",
+      "inherits": "base",
+      "generator": "Visual Studio 18 2026",
       "architecture": {
         "value": "x64",
         "strategy": "set"
       },
-      "binaryDir": "${sourceDir}/Build/windows-dx12",
+      "binaryDir": "${sourceDir}/Build/windows-directx",
       "cacheVariables": {
-        "USE_DX12": "ON",
-        "USE_VULKAN": "OFF"
+        "USE_DIRECTX": "ON"
       }
     },
     {
       "name": "windows-vulkan",
       "displayName": "Windows Vulkan",
-      "generator": "Visual Studio 17 2022",
+      "inherits": "base",
+      "generator": "Visual Studio 18 2026",
       "architecture": {
         "value": "x64",
         "strategy": "set"
       },
       "binaryDir": "${sourceDir}/Build/windows-vulkan",
       "cacheVariables": {
-        "USE_DX12": "OFF",
         "USE_VULKAN": "ON"
       }
     },
     {
       "name": "android",
       "displayName": "Android Vulkan",
+      "inherits": "base",
       "generator": "Ninja",
       "binaryDir": "${sourceDir}/Build/android",
       "toolchainFile": "${sourceDir}/Platforms/ExecAndroid/ndk/build/cmake/android.toolchain.cmake",
       "cacheVariables": {
-        "USE_DX12": "OFF",
         "USE_VULKAN": "ON",
         "ANDROID_ABI": "arm64-v8a",
         "ANDROID_PLATFORM": "android-29"
       }
+    },
+    {
+      "name": "engine",
+      "displayName": "Engine Debugging",
+      "inherits": "base",
+      "generator": "Visual Studio 18 2026",
+      "architecture": {
+        "value": "x64",
+        "strategy": "set"
+      },
+      "binaryDir": "${sourceDir}/Build/engine",
+      "cacheVariables": {
+        "USE_DEBUGGING": "ON"
+      }
     }
+
   ],
   "buildPresets": [
     {
-      "name": "windows-dx12",
-      "configurePreset": "windows-dx12"
+      "name": "Windows-DirectX",
+      "configurePreset": "windows-directx"
     },
     {
-      "name": "windows-vulkan",
+      "name": "Windows-Vulkan",
       "configurePreset": "windows-vulkan"
     },
     {
-      "name": "android",
+      "name": "Android",
       "configurePreset": "android"
+    },
+    {
+      "name": "Debug Engine",
+      "configurePreset": "engine"
     }
   ]
 }

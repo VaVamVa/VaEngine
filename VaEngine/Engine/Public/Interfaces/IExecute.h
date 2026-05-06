@@ -1,6 +1,6 @@
 #pragma once
 
-#include "Common_RHI.h"
+#include "RHI/Common_RHI.h"
 
 class IExecute {
 public:
@@ -15,6 +15,9 @@ public:
 	virtual void OnResume() {}
 
 protected:
+	virtual void OnRelease() = 0;
+
+	virtual void OnPreUpdate() = 0;
 	virtual void OnUpdate() = 0;
 	virtual void OnRender() = 0;
 	virtual void OnPostRender() = 0;

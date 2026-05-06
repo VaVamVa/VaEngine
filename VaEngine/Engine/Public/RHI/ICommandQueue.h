@@ -1,6 +1,6 @@
 #pragma once
 
-#include <vector>
+#include <span>
 #include <cstdint>
 #include "Common_RHI.h"
 
@@ -21,9 +21,9 @@ public:
 
 	virtual void Register(IRenderDevice* inDevice, const CommandQueueDesc& inDesc) = 0;
 
-	virtual void ExecuteCommandLists(const std::vector<ICommandList*>& commandLists) = 0;
+	virtual void ExecuteCommandLists(const uint32_t& inCount, const std::span<ICommandList*>& commandLists) = 0;
 	// GPU가 작업이 끝나면 Fence의 값을 Value로 올리라는 신호를 보내는 함수
-	virtual void Signal(IFence* fence, uint64_t value) = 0;
+	virtual void Signal(IFence* fence, const uint64_t& value) = 0;
 	// GPU에게 Fence의 값이 Value에 도달할 때까지 기다리고 있는다는 신호를 보내는 함수
-	virtual void Wait(IFence* fence, uint64_t value) = 0;
+	virtual void Wait(IFence* fence, const uint64_t& value) = 0;
 };

@@ -7,12 +7,9 @@ if(MSVC)
 endif()
 
 
-option(USE_DX12		"Enable DirectX12 backend"	OFF)
+option(USE_DIRECTX	"Enable DirectX backend"	OFF)
 option(USE_VULKAN	"Enable Vulkan backend"		OFF)
-
-if(USE_DX12 AND NOT WIN32)
-	message(FATAL_ERROR "DX12 is only supported on Windows")
-endif()
+#이곳에 Graphics API 옵션 추가
 
 add_subdirectory(Engine)
 add_subdirectory(Application)

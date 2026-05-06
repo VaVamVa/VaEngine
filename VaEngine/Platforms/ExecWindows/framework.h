@@ -10,11 +10,11 @@
 #include <memory>
 
 
-#include "Interfaces/IRenderDevice.h"
-#include "Interfaces/ISwapChain.h"
-#include "Interfaces/ICommandQueue.h"
-#include "Interfaces/ICommandList.h"
-#include "Interfaces/IFence.h"
+#include "RHI/IRenderDevice.h"
+#include "RHI/ISwapChain.h"
+#include "RHI/ICommandQueue.h"
+#include "RHI/ICommandList.h"
+#include "RHI/IFence.h"
 
 #include "RHI/RHILoader.h"
 

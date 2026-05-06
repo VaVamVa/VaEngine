@@ -3,7 +3,8 @@
 #include "CommandQueue_DirectX.h"
 #include "SwapChain_DirectX.h"
 #include "Fence_DirectX.h"
-#include "Interfaces/ICommandList.h"
+#include "CommandList_DirectX.h"
+#include "CommandAlloc_DirectX.h"
 
 void RenderDevice_DirectX::Initialize()
 {
@@ -52,7 +53,16 @@ std::unique_ptr<IFence> RenderDevice_DirectX::CreateFence()
 
 std::unique_ptr<ICommandList> RenderDevice_DirectX::CreateCommandList(const CommandListDesc& desc)
 {
-	return std::unique_ptr<ICommandList>();
+	std::unique_ptr<ICommandList> commandList = std::make_unique<CommandList_DirectX>();
+	commandList->Register(this, desc);
+	return commandList;
+}
+
+std::unique_ptr<ICommandAlloc> RenderDevice_DirectX::CreateCommandAllocator(const CommandAllocDesc& desc)
+{
+	std::unique_ptr<ICommandAlloc> commandAllocator = std::make_unique<CommandAlloc_DirectX>();
+	commandAllocator->Register(this, desc);
+    return commandAllocator;
 }
 
 void RenderDevice_DirectX::EnableDebugLayer()
