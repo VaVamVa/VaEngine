@@ -8,6 +8,11 @@
 #include "RHI/ISwapChain.h"
 #include "RHI/ICommandAlloc.h"
 #include "RHI/ICommandList.h"
+#include "RHI/Buffer/IResourceBuffer.h"
+#include "RHI/Buffer/IConstantBuffer.h"
+#include "RHI/Pipeline/IBindingLayout.h"
+#include "RHI/Pipeline/IPipelineState.h"
+#include "RHI/Texture/ITexture.h"
 
 /*
 RenderDevice는 그래픽 API와 상호 작용하는 핵심 클래스입니다.
@@ -26,5 +31,10 @@ public:
 	[[nodiscard]] virtual std::unique_ptr<ISwapChain>		CreateSwapChain(const SwapChainDesc& desc) = 0;
 	[[nodiscard]] virtual std::unique_ptr<ICommandAlloc>	CreateCommandAllocator(const CommandAllocDesc& desc) = 0;
 	[[nodiscard]] virtual std::unique_ptr<ICommandList>		CreateCommandList(const CommandListDesc& desc) = 0;
+	[[nodiscard]] virtual std::unique_ptr<IResourceBuffer>		CreateBuffer(const ResourceBufferDesc& desc) = 0;
+	[[nodiscard]] virtual std::unique_ptr<IConstantBuffer>		CreateConstantBuffer(size_t size) = 0;
+	[[nodiscard]] virtual std::unique_ptr<IBindingLayout>		CreateBindingLayout(const BindingEntry* entries, uint32_t count) = 0;
+	[[nodiscard]] virtual std::unique_ptr<IPipelineState>		CreatePipelineState(const PipelineStateDesc& desc) = 0;
+	[[nodiscard]] virtual std::unique_ptr<ITexture>				CreateTexture() = 0;
 
 };

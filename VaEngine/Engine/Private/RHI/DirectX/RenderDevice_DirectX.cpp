@@ -5,6 +5,11 @@
 #include "Fence_DirectX.h"
 #include "CommandList_DirectX.h"
 #include "CommandAlloc_DirectX.h"
+#include "RHI/DirectX/Buffer/ResourceBuffer_DirectX.h"
+#include "RHI/DirectX/Buffer/ConstantBuffer_DirectX.h"
+#include "RHI/DirectX/Pipeline/BindingLayout_DirectX.h"
+#include "RHI/DirectX/Pipeline/PipelineState_DirectX.h"
+#include "RHI/DirectX/Texture/Texture_DirectX.h"
 
 void RenderDevice_DirectX::Initialize()
 {
@@ -63,6 +68,39 @@ std::unique_ptr<ICommandAlloc> RenderDevice_DirectX::CreateCommandAllocator(cons
 	std::unique_ptr<ICommandAlloc> commandAllocator = std::make_unique<CommandAlloc_DirectX>();
 	commandAllocator->Register(this, desc);
     return commandAllocator;
+}
+
+std::unique_ptr<IResourceBuffer> RenderDevice_DirectX::CreateBuffer(const ResourceBufferDesc& desc)
+{
+	auto buffer = std::make_unique<ResourceBuffer_DX12>();
+	buffer->Create(device.Get(), desc);
+	return buffer;
+}
+
+std::unique_ptr<IConstantBuffer> RenderDevice_DirectX::CreateConstantBuffer(size_t size)
+{
+	auto buffer = std::make_unique<ConstantBuffer_DirectX>();
+	buffer->Create(device.Get(), size);
+	return buffer;
+}
+
+std::unique_ptr<IBindingLayout> RenderDevice_DirectX::CreateBindingLayout(const BindingEntry* entries, uint32_t count)
+{
+	auto layout = std::make_unique<BindingLayout_DirectX>();
+	layout->Create(device.Get(), entries, count);
+	return layout;
+}
+
+std::unique_ptr<IPipelineState> RenderDevice_DirectX::CreatePipelineState(const PipelineStateDesc& desc)
+{
+	auto state = std::make_unique<PipelineState_DirectX>();
+	state->Create(device.Get(), desc);
+	return state;
+}
+
+std::unique_ptr<ITexture> RenderDevice_DirectX::CreateTexture()
+{
+	return std::make_unique<Texture_DirectX>();
 }
 
 void RenderDevice_DirectX::EnableDebugLayer()

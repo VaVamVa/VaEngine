@@ -21,10 +21,14 @@ struct NativeDisplayInfo
 
 enum class EPixelFormat : uint32_t
 {
-	Unknown				= 0,
-	R8G8B8A8_UNORM		= 28,
-	D24_UNORM_S8_UINT	= 45,
-	B8G8R8A8_UNORM		= 87,
+	Unknown					= 0,
+	R32G32B32A32_FLOAT		= 2,
+	R32G32B32_FLOAT			= 6,
+	R32G32_FLOAT			= 16,
+	R32_FLOAT				= 41,
+	R8G8B8A8_UNORM			= 28,
+	D24_UNORM_S8_UINT		= 45,
+	B8G8R8A8_UNORM			= 87,
 	Max
 };
 
@@ -121,4 +125,36 @@ struct ResourceBarrier
 	EResourceState			beforeState;
 	// afterState는 beforeState와 다른 상태여야 합니다. (예: RenderTarget -> Present)
 	EResourceState			afterState;
+};
+
+// GPU 버퍼의 용도
+enum class EBufferUsage : uint32_t
+{
+	None			= 0,
+	VertexBuffer	= 1 << 0,
+	IndexBuffer		= 1 << 1,
+	ConstantBuffer	= 1 << 2,
+	UnorderedAccess	= 1 << 3,
+};
+
+// CPU/GPU 메모리 접근 방식
+enum class EMemoryAccess : uint32_t
+{
+	Default		= 0,	// GPU 전용 (D3D12_HEAP_TYPE_DEFAULT / Device-local)
+	Upload		= 1,	// CPU 쓰기, GPU 읽기 (D3D12_HEAP_TYPE_UPLOAD / HOST_VISIBLE)
+	Readback	= 2,	// GPU 쓰기, CPU 읽기 (D3D12_HEAP_TYPE_READBACK)
+};
+
+struct ResourceBufferDesc
+{
+	uint64_t		size	= 0;
+	EBufferUsage	usage	= EBufferUsage::None;
+	EMemoryAccess	access	= EMemoryAccess::Default;
+	uint32_t		stride	= 0;	// 정점 크기(VertexBuffer) 또는 원소 크기
+};
+
+enum class EIndexFormat : uint32_t
+{
+	UInt16 = 0,
+	UInt32 = 1,
 };

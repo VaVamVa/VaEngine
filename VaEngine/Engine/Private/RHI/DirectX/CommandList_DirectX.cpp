@@ -124,3 +124,44 @@ void CommandList_DirectX::ClearRenderTargetView(IResourceView* inRTVHandle, cons
 	commandList->ClearRenderTargetView(rtvHandle, inColor, 0, nullptr);
 }
 
+void CommandList_DirectX::SetRenderTarget(IResourceView* rtv)
+{
+	D3D12_CPU_DESCRIPTOR_HANDLE rtvHandle = static_cast<ResourceView_DirectX*>(rtv)->GetRTVHandle();
+	commandList->OMSetRenderTargets(1, &rtvHandle, FALSE, nullptr);
+}
+
+void CommandList_DirectX::SetViewport(float x, float y, float width, float height, float minDepth, float maxDepth)
+{
+	D3D12_VIEWPORT viewport = { x, y, width, height, minDepth, maxDepth };
+	commandList->RSSetViewports(1, &viewport);
+}
+
+void CommandList_DirectX::SetScissorRect(int32_t left, int32_t top, int32_t right, int32_t bottom)
+{
+	D3D12_RECT rect = { left, top, right, bottom };
+	commandList->RSSetScissorRects(1, &rect);
+}
+
+void CommandList_DirectX::SetVertexBuffer(IResourceBuffer* vb, uint32_t stride, uint32_t totalSize)
+{
+	D3D12_VERTEX_BUFFER_VIEW view = {};
+	view.BufferLocation = static_cast<ID3D12Resource*>(vb->GetResource()->GetNativeResource())->GetGPUVirtualAddress();
+	view.StrideInBytes  = stride;
+	view.SizeInBytes    = totalSize;
+	commandList->IASetVertexBuffers(0, 1, &view);
+}
+
+void CommandList_DirectX::SetIndexBuffer(IResourceBuffer* ib, EIndexFormat format, uint32_t totalSize)
+{
+	D3D12_INDEX_BUFFER_VIEW view = {};
+	view.BufferLocation = static_cast<ID3D12Resource*>(ib->GetResource()->GetNativeResource())->GetGPUVirtualAddress();
+	view.Format         = (format == EIndexFormat::UInt16) ? DXGI_FORMAT_R16_UINT : DXGI_FORMAT_R32_UINT;
+	view.SizeInBytes    = totalSize;
+	commandList->IASetIndexBuffer(&view);
+}
+
+void CommandList_DirectX::DrawIndexed(uint32_t indexCount, uint32_t startIndex, int32_t baseVertex)
+{
+	commandList->DrawIndexedInstanced(indexCount, 1, startIndex, baseVertex, 0);
+}
+

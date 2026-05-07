@@ -12,15 +12,36 @@ target_sources(Engine PUBLIC
 )
 
 #공통 소스_Private
-file(GLOB_RECURSE ENGINE_CORE_SOURCES
+file(GLOB_RECURSE ENGINE_SOURCES
     CONFIGURE_DEPENDS
     "Private/Core/*.cpp"
+    "Private/Mesh/*.cpp"
+    "Private/System/Time.cpp"
+    "Private/System/InputSystem.cpp"
 )
 target_sources(Engine PRIVATE
     Engine.cpp
     "Private/RHI/RHILoader.cpp"
-    ${ENGINE_CORE_SOURCES}
+    ${ENGINE_SOURCES}
 )
+
+# Windows 플랫폼 입력 시스템
+if(WIN32)
+    file(GLOB ENGINE_WIN_SYSTEM_HEADERS
+        CONFIGURE_DEPENDS
+        "Private/System/Windows/*.h"
+    )
+    target_sources(Engine PRIVATE
+        FILE_SET nav_WIN_SYSTEM_HEADERS TYPE HEADERS
+        BASE_DIRS Private
+        FILES ${ENGINE_WIN_SYSTEM_HEADERS}
+    )
+    file(GLOB ENGINE_WIN_SYSTEM_SOURCES
+        CONFIGURE_DEPENDS
+        "Private/System/Windows/*.cpp"
+    )
+    target_sources(Engine PRIVATE ${ENGINE_WIN_SYSTEM_SOURCES})
+endif()
 
 # Debug Engine 모드
 if (USE_DEBUGGING)
@@ -79,7 +100,36 @@ if(USE_DIRECTX)
         "Private/RHI/DirectX/*.cpp"
     )
     target_sources(Engine PRIVATE ${ENGINE_DX12_SOURCES})
-    target_link_libraries(Engine PRIVATE d3d12 dxgi dxguid Microsoft::DirectX-Headers)
+
+    file(GLOB_RECURSE ENGINE_AGENT_DX12_HEADERS
+        CONFIGURE_DEPENDS
+        "Private/RHI/Agent/DirectX/*.h"
+    )
+    target_sources(Engine PRIVATE
+        FILE_SET nav_AGENT_DX12_HEADERS TYPE HEADERS
+        BASE_DIRS Private
+        FILES ${ENGINE_AGENT_DX12_HEADERS}
+    )
+    file(GLOB_RECURSE ENGINE_AGENT_DX12_SOURCES
+        CONFIGURE_DEPENDS
+        "Private/RHI/Agent/DirectX/*.cpp"
+    )
+    target_sources(Engine PRIVATE ${ENGINE_AGENT_DX12_SOURCES})
+
+    FetchContent_Declare(
+        stb
+        GIT_REPOSITORY https://github.com/nothings/stb.git
+        GIT_TAG master
+        GIT_SHALLOW TRUE
+    )
+    FetchContent_MakeAvailable(stb)
+    target_include_directories(Engine PRIVATE ${stb_SOURCE_DIR})
+
+    target_link_libraries(Engine PRIVATE d3d12 dxgi dxguid d3dcompiler Microsoft::DirectX-Headers)
+
+    # 셰이더 절대 경로를 컴파일 타임 매크로로 주입 (런타임 작업 디렉토리 의존성 제거)
+    set(_dx_shader_dir "${CMAKE_CURRENT_SOURCE_DIR}/Private/RHI/DirectX/_Shaders")
+    target_compile_definitions(Engine PRIVATE "DX_SHADER_DIR=L\"${_dx_shader_dir}\"")
     
     get_target_property(_dx_includes Microsoft::DirectX-Headers INTERFACE_INCLUDE_DIRECTORIES)
     target_include_directories(Engine SYSTEM PRIVATE ${_dx_includes})

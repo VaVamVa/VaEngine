@@ -8,11 +8,14 @@
 #include "RHI/ISwapChain.h"
 #include "RHI/ICommandAlloc.h"
 #include "RHI/ICommandList.h"
-
+#include "RHI/Buffer/IResourceBuffer.h"
 #include "RHI/IRHIResource.h"
+#include "RHI/Agent/CubeRenderer.h"
 
 #include <stdexcept>
 #include <array>
+
+Execute::~Execute() = default;
 
 void Execute::OnInitialize(NativeDisplayInfo displayInfo)
 {
@@ -42,6 +45,9 @@ void Execute::OnInitialize(NativeDisplayInfo displayInfo)
 		commandAllocator = renderDevice->CreateCommandAllocator({ .type = ECommandQueueType::Graphics });
 		commandList = renderDevice->CreateCommandList({ .type = ECommandQueueType::Graphics });
 
+		cubeRenderer = CubeRenderer::Create();
+		cubeRenderer->Initialize(renderDevice.get());
+
 		return;
 	}
 
@@ -68,11 +74,11 @@ void Execute::OnLoop()
 		// Wait for GPU to finish processing commands before Next Rendering
 	}
 
+	OnPreRender();
 	OnRender();
 	OnPostRender();
 	
 	swapChain->Present(true);
-
 	commandQueue->Signal(frameFence.get(), ++currentFenceValue);
 }
 
@@ -109,6 +115,10 @@ void Execute::OnUpdate()
 {
 }
 
+void Execute::OnPreRender()
+{
+}
+
 void Execute::OnRender()
 {
 	commandAllocator->Reset();
@@ -121,19 +131,20 @@ void Execute::OnRender()
 	};
 	commandList->SetResourceBarrier(1, &barrier);
 
-	// Rendering commands would go here
-	commandList->ClearRenderTargetView(
-		swapChain->GetCurrentBackBufferView(), // RTV 핸들 (swap chain을 일단 넘김)
-		std::array<float, 4>{0.1f, 0.2f, 0.3f, 1.0f}.data() // Clear color
-	);
-	std::vector<ICommandList*> commandLists = { commandList.get() };
-	
+	IResourceView* rtv = swapChain->GetCurrentBackBufferView();
+	commandList->SetRenderTarget(rtv);
+	commandList->ClearRenderTargetView(rtv, std::array<float, 4>{0.1f, 0.2f, 0.3f, 1.0f}.data());
+	commandList->SetViewport(0.0f, 0.0f, 1280.0f, 720.0f, 0.0f, 1.0f);
+	commandList->SetScissorRect(0, 0, 1280, 720);
+
+	cubeRenderer->Draw(commandList.get());
 
 	barrier.beforeState = EResourceState::RenderTarget;
 	barrier.afterState = EResourceState::Present;
 	commandList->SetResourceBarrier(1, &barrier);
 	commandList->Close();
 
+	std::vector<ICommandList*> commandLists = { commandList.get() };
 	commandQueue->ExecuteCommandLists(static_cast<uint32_t>(commandLists.size()), commandLists);
 }
 

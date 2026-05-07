@@ -1,6 +1,6 @@
 # VaEngine — 프로젝트 현황판
 
-> 마지막 업데이트: 2026-05-06
+> 마지막 업데이트: 2026-05-08
 >
 > **[공지] 이 문서는 현황판입니다. ToDo 항목은 각 날짜의 Log 파일에만 기록합니다.**
 
@@ -10,6 +10,68 @@
 
 DirectX12 + Vulkan 크로스 플랫폼 3D 렌더링 엔진.
 개발 방식은 개념/가이드 위주 학습. 코드는 컴파일 가능한 수준으로 완성도 있게 작성.
+
+---
+
+## 예정 아키텍처 변경 (2026-05-08 계획)
+
+### Execute → Engine 이동 + IManagement 인터페이스 도입
+
+현재 `Execute`는 `Application/Source/`에 있으며 GPU 초기화, 프레임 루프, 렌더 커맨드 전부를 담당한다.
+이 구조를 아래와 같이 재편할 예정이다.
+
+**변경 후 레이어 책임:**
+
+| 레이어 | 변경 전 | 변경 후 |
+|---|---|---|
+| Engine | IExecute 정의만 | `Execute` 구현체 소유 (GPU 초기화, 프레임 루프, RHI 관리) |
+| Application | Execute 구현, RHI 초기화 포함 | `IManagement` 구현만 (프레임 콘텐츠 — 무엇을 그릴지) |
+
+**IManagement 인터페이스 (예정):**
+
+```cpp
+// Engine/Public/Interfaces/IManagement.h
+class IManagement
+{
+public:
+    virtual ~IManagement() = default;
+    virtual void OnUpdate(float deltaTime) = 0;
+    virtual void OnRender(ICommandList* cmdList) = 0;
+    virtual void OnPostRender() = 0;
+};
+```
+
+**Execute (Engine 소유 후) 호출 흐름:**
+
+```
+Execute::OnLoop()
+  ├─ OnPreUpdate()          (Engine 내부 — 입력/시간 처리)
+  ├─ management->OnUpdate() (Application 구현 — 게임 로직, 씬 업데이트)
+  ├─ OnPreRender()          (Engine 내부 — 커맨드 기록 시작, Barrier)
+  ├─ management->OnRender() (Application 구현 — 드로우 커맨드 기록)
+  ├─ OnPostRender()         (Engine 내부 — Present, Fence Wait)
+  └─ management->OnPostRender() (Application 구현 — 선택적 후처리)
+```
+
+**Application 책임 변화:**
+
+- 변경 전: GPU 장치 생성, 스왑 체인, 커맨드 큐/리스트/펜스 관리 + 드로우 로직
+- 변경 후: `IManagement`만 구현. 드로우 커맨드 기록(`OnRender`)과 게임 로직(`OnUpdate`)에 집중
+
+> 이 변경으로 Application은 "어떻게 GPU를 초기화할지"를 알 필요 없이 "이번 프레임에 무엇을 그릴지"만 담당하게 된다.
+
+### 플랫폼별 입력 구현체 빌드 분리 (프로젝트 마지막 단계)
+
+현재는 모든 플랫폼 입력 구현체가 빌드에 포함되어 있음.
+추후 CMakeLists.txt의 플랫폼 조건 블록(`if(WIN32)` / `if(ANDROID)` 등)으로
+해당 플랫폼의 구현체만 컴파일에 포함되도록 분리 예정.
+
+| 구현체 | 상속 인터페이스 | 대상 플랫폼 |
+|---|---|---|
+| `MouseInput_Windows` | `IPointerInput` | Windows |
+| `KeyInput_Windows` | `IKeyInput` | Windows |
+| `FingerInput_Android` | `IPointerInput` | Android |
+| `JoystickInput_Xbox` | `IPointerInput` | Console (Xbox 등) |
 
 ---
 
@@ -65,13 +127,19 @@ VaEngine/
 │   │   │   ├── ICommandList.h  ← Begin / Close / SetResourceBarrier / ClearRenderTargetView
 │   │   │   ├── ICommandAlloc.h ← Register / Reset
 │   │   │   ├── IFence.h        ← SetEventOnComplete / GetCompletedValue
-│   │   │   ├── IGPUBuffer.h    ← (예약)
-│   │   │   └── IRHIResource.h  ← (예약)
+│   │   │   ├── IGPUBuffer.h    ← 버텍스/인덱스 버퍼 인터페이스
+│   │   │   ├── IResourceView.h ← Descriptor/View 추상화 인터페이스
+│   │   │   ├── IRHIResource.h  ← TRHIResource (shared_ptr + Custom Deleter)
+│   │   │   └── Agent/
+│   │   │       └── CubeRenderer.h ← 큐브 렌더링 인터페이스
 │   │   └── Interfaces/
 │   │       └── IExecute.h      ← 앱 생명주기 인터페이스
 │   ├── Private/
 │   │   ├── RHI/
 │   │   │   ├── RHILoader.cpp           ← USE_DIRECTX/USE_VULKAN/USE_DEBUGGING 분기
+│   │   │   ├── Agent/                  ← 고수준 렌더링 로직 (Agent)
+│   │   │   │   └── DirectX/
+│   │   │   │       ├── CubeRenderer_DX12.h/.cpp
 │   │   │   └── DirectX/               ← USE_DIRECTX일 때만 컴파일
 │   │   │       ├── Common_DirectX.h        ← ComPtr, DXGI, D3D12, d3dx12
 │   │   │       ├── RenderDevice_DirectX.h/.cpp
@@ -79,7 +147,12 @@ VaEngine/
 │   │   │       ├── CommandList_DirectX.h/.cpp
 │   │   │       ├── CommandAlloc_DirectX.h/.cpp
 │   │   │       ├── SwapChain_DirectX.h/.cpp
-│   │   │       └── Fence_DirectX.h/.cpp
+│   │   │       ├── Fence_DirectX.h/.cpp
+│   │   │       ├── ResourceView_DirectX.h/.cpp
+│   │   │       ├── Buffers/
+│   │   │       │   └── GPUBuffer_DirectX.h/.cpp
+│   │   │       └── _Shaders/
+│   │   │           └── CubeShader.hlsl
 │   │   └── Vulkan/                    ← USE_VULKAN일 때만 컴파일
 │   └── Engine.cpp
 ├── Application/
@@ -108,8 +181,8 @@ VaEngine/
 
 | 프로젝트 | 타입 | 빌드 | 코드 작성 |
 |---|---|---|---|
-| Engine | Static Library | ✅ 성공 | 🔧 RHI 인터페이스 완성, DX12 핵심 객체 구현 완료 |
-| Application | Static Library | ✅ 성공 | 🔧 Execute 구현 — 초기화/종료 완성, OnRender 작업 중 |
+| Engine | Static Library | ✅ 성공 | 🔧 RHI 인터페이스(Buffer/View 포함) 및 CubeRenderer 구현 완료 |
+| Application | Static Library | ✅ 성공 | 🔧 Execute 구현 — 큐브 렌더링 통합 및 안정화 완료 |
 | ExecWindows | Executable | ✅ 성공 | ✅ WinMain 구현 완료, 창 실행 확인 |
 | ExecAndroid | Android | 미확인 | ⬜ 기본 틀만 |
 
@@ -216,4 +289,7 @@ Agent/
 | [2026-05-04_Q&A.md](2026-05-04_Q&A.md) | IExecute 필요성, Execute 위치 결정, 엔진 배포 전략 |
 | [2026-05-04_Log.md](2026-05-04_Log.md) | Execute → Application 이동, RHI 인터페이스 재구조화, CommandList/CommandAlloc 구현, engine 프리셋 추가 |
 | [2026-05-05_Q&A.md](2026-05-05_Q&A.md) | if constexpr vs #if, USE_DEBUGGING 설계, engine 프리셋 구조, CMakePresets 검증 |
-| [2026-05-05_Log.md](2026-05-05_Log.md) | 첫 렌더링 명령(Clear) 및 WaitForPreviousFrame 구현 예정 |
+| [2026-05-05_Log.md](2026-05-05_Log.md) | 첫 렌더링 명령(Clear) 및 WaitForPreviousFrame 구현 |
+| [2026-05-06_Log.md](2026-05-06_Log.md) | Fence 동기화 안정화 및 TRHIResource 커스텀 삭제자 적용 |
+| [2026-05-07_Log.md](2026-05-07_Log.md) | IGPUBuffer 인터페이스 설계 및 Vertex/Index Buffer 구현 |
+| [2026-05-08_Log.md](2026-05-08_Log.md) | CubeRenderer DX12 구현 완료, 셰이더 경로 매크로, NDC z축 수정, 다형성 아키텍처 계획 작성 |

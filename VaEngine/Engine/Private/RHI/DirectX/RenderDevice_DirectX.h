@@ -14,6 +14,11 @@ public:
 	std::unique_ptr<IFence>			CreateFence() override;
 	std::unique_ptr<ICommandAlloc>	CreateCommandAllocator(const CommandAllocDesc& desc) override;
 	std::unique_ptr<ICommandList>	CreateCommandList(const CommandListDesc& desc) override;
+	std::unique_ptr<IResourceBuffer>		CreateBuffer(const ResourceBufferDesc& desc) override;
+	std::unique_ptr<IConstantBuffer>		CreateConstantBuffer(size_t size) override;
+	std::unique_ptr<IBindingLayout>			CreateBindingLayout(const BindingEntry* entries, uint32_t count) override;
+	std::unique_ptr<IPipelineState>			CreatePipelineState(const PipelineStateDesc& desc) override;
+	std::unique_ptr<ITexture>				CreateTexture() override;
 
 	ID3D12Device*	GetDevice() const { return device.Get(); }
 	IDXGIFactory6*	GetFactory() const { return factory.Get(); }
