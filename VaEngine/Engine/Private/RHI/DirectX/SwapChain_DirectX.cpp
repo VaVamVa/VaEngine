@@ -122,7 +122,7 @@ void SwapChain_DirectX::CreateRTV(RenderDevice_DirectX* device)
 		);
 
 		// RTV 생성 & 힙의 i번째 슬롯에 RTV를 할당
-		device->GetDevice()->CreateRenderTargetView(backBuffers[i].GetHandle(), nullptr, rtvHandle);
+		device->GetDevice()->CreateRenderTargetView(backBuffers[i].GetResource(), nullptr, rtvHandle);
 
 		ResourceViewDesc desc{
 				.type = EResourceViewType::RenderTargetView,

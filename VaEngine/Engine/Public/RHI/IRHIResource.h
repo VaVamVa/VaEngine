@@ -9,7 +9,7 @@ struct IRHIResource
 public:
 	virtual ~IRHIResource() = default;
 
-	virtual void* GetNativeHandle() const = 0;
+	virtual void* GetNativeResource() const = 0;
 };
 
 #include <memory>
@@ -18,20 +18,18 @@ template<typename ResourceType>
 class TRHIResource : public IRHIResource
 {
 public:
-	TRHIResource() = default;
+	TRHIResource() { resource.reset(); }
 	TRHIResource(ResourceType* inResource) { resource.reset(inResource); }
 	template<typename Deleter>
 	TRHIResource(ResourceType* inResource, Deleter deleter) { resource.reset(inResource, deleter); }
 
 	virtual ~TRHIResource() = default;
 
-	virtual void SetResource(ResourceType* inResource) { resource.reset(inResource); }
-
-	virtual ResourceType* GetHandle() const { return resource.get(); }
+	virtual ResourceType* GetResource() const { return resource.get(); }
 	virtual ResourceType* operator->() const { return resource.get(); }
 	virtual ResourceType& operator*() const { return *resource; }
 
-	virtual void* GetNativeHandle() const override
+	virtual void* GetNativeResource() const override
 	{
 		return resource.get();
 	}

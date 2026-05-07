@@ -5,6 +5,7 @@
 
 class IRHIResource;
 
+//composition
 class ResourceView_DirectX : public IResourceView
 {
 public:

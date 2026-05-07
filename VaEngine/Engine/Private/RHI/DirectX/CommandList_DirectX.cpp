@@ -107,7 +107,7 @@ void CommandList_DirectX::SetResourceBarrier(uint32_t numBarriers, const Resourc
 		barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
 		barrier.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
 
-		barrier.Transition.pResource = static_cast<ID3D12Resource*>(inBarriers[i].resource->GetNativeHandle());
+		barrier.Transition.pResource = static_cast<ID3D12Resource*>(inBarriers[i].resource->GetNativeResource());
 		barrier.Transition.StateBefore = GetResourceState(inBarriers[i].beforeState);
 		barrier.Transition.StateAfter = GetResourceState(inBarriers[i].afterState);
 		barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
