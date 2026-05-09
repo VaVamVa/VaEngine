@@ -1,10 +1,12 @@
 ﻿#include "framework.h"
 #include "ExecWindows.h"
 
-#include "Execute.h"
+#include "VaProgramName.h"
+#include "Interfaces/IExecute.h"
 
-namespace 
+namespace
 {
+    std::unique_ptr<VaProgramName>  vaProgramName    = nullptr;
     std::unique_ptr<IExecute> execEngine = nullptr;
 }
 
@@ -48,8 +50,9 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
     ShowWindow(hWnd, SW_SHOW);
     UpdateWindow(hWnd);
 
-    execEngine = std::make_unique<Execute>();
-    
+    vaProgramName    = std::make_unique<VaProgramName>();
+    execEngine = IExecute::Create(vaProgramName.get());
+
     NativeDisplayInfo displayInfo = NativeDisplayInfo();
     displayInfo.platform = NativeDisplayInfo::EPlatform::Windows;
     displayInfo.Display = hInstance;
@@ -77,6 +80,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
 
     execEngine->OnDestroy();
     execEngine.reset();
+    vaProgramName.reset();
 
     return static_cast<int>(msg.wParam);
 }

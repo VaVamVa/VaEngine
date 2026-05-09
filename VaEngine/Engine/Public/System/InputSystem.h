@@ -12,7 +12,7 @@ class IPointerInput;
 
 /*
 IKeyInput*, IPointerInput*의 수명은 호출자 책임 (소유하지 않음).
-플랫폼 분기 없는 단일 구현 — 가상 함수 불필요.
+플랫폼 분기 없는 단일 구현.
 */
 class InputSystem
 {
@@ -32,6 +32,6 @@ private:
 	IKeyInput*     keys;
 	IPointerInput* pointer;
 
-	std::vector<InputContext>              contexts;
-	std::unordered_map<std::string, float> actionValues;
+	std::vector<InputContext>                                                                    contexts;
+	std::unordered_map<std::string, float, TransparentStringHash, std::equal_to<>> actionValues;
 };

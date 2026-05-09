@@ -1,26 +1,24 @@
 #pragma once
 
 #include "IMesh.h"
-#include "RHI/Buffer/IResourceBuffer.h"
+#include "MeshData.h"
+#include "RHI/IBuffer.h"
 
-#include <vector>
-#include <cstdint>
 #include <memory>
+
+class IRenderDevice;
 
 class MeshPrimitive : public IMesh
 {
 public:
-	void Initialize(IRenderDevice* device) override;
+	void Initialize(IRenderDevice* device, const MeshData& data);
 	void Draw(ICommandList* cmdList) override;
-
-protected:
-	virtual void BuildGeometry() = 0;
-
-	std::vector<uint8_t>  vertexData;
-	std::vector<uint16_t> indexData;
-	uint32_t              vertexStride = 0;
+	void DrawInstanced(ICommandList* cmdList, uint32_t instanceCount) override;
 
 private:
-	std::unique_ptr<IResourceBuffer> vertexBuffer;
-	std::unique_ptr<IResourceBuffer> indexBuffer;
+	std::unique_ptr<IBuffer> vertexBuffer;
+	std::unique_ptr<IBuffer> indexBuffer;
+	uint32_t                 vertexByteSize = 0;
+	uint32_t                 indexCount     = 0;
+	uint32_t                 vertexStride   = 0;
 };

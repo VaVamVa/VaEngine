@@ -4,12 +4,69 @@ DirectX12 + Vulkan 크로스 플랫폼 3D 렌더링 엔진.
 
 ---
 
+## 프로젝트 현황판
+
+`Agent/AgentLog/README.md`
+
+---
+
+## 아키텍처
+
+### 계층 구조
+
+```
+Platform  (ExecWindows / ExecAndroid)
+    │  OS 진입점, 메시지 루프, Graphics API 제공
+    ▼
+Engine  (Static Library)
+    │  렌더 루프 소유, RHI 추상화, 씬 렌더링
+    │  ApplicationManager 인터페이스를 통해 Application과 통신
+    ▼
+Application/Core  (Static Library)
+    │  앱 간 공통 유틸리티 (FreeCamera, Character, GameObject 등)
+    │  Engine Public API만 참조
+    ▼
+Application/{Source}  (Client 작성 영역)
+       게임/앱 고유 로직, ApplicationManager 구현체
+       타겟이 바뀌면 이 디렉토리만 교체
+```
+
+### 데이터 흐름
+
+```
+Application
+  └─ OnUpdate()          게임 로직, Transform 갱신
+  └─ SubmitRenderState() 렌더링할 메시·카메라 스냅샷 제출
+          │
+          ▼
+Engine
+  └─ RenderGraph 빌드    렌더 패스 순서 결정
+  └─ Renderer 실행       GPU 커맨드 기록 및 Present
+```
+
+Application은 렌더링 명령에 전혀 관여하지 않는다.
+Engine은 게임 로직을 모른다.
+
+---
+
+## 프로젝트 구성
+
+| 프로젝트 | 타입 | 역할 |
+|---|---|---|
+| `Engine` | Static Library | RHI 추상화, 렌더 루프, 씬 렌더링 인프라. DX12/Vulkan 백엔드 포함. |
+| `Application/Core` | Static Library | 공통 유틸리티 (카메라, 캐릭터, 기본 오브젝트). Engine을 사용하는 앱이라면 재사용 가능. |
+| `Application/{Source}` | Static Library | 프로그램 고유 로직. `ApplicationManager` 구현체. 프로젝트마다 교체. |
+| `ExecWindows` | Executable | Windows 진입점 (WinMain). DirectX 12 또는 Vulkan 백엔드 선택. |
+| `ExecAndroid` | Shared Library | Android 진입점 (NativeActivity). Vulkan 백엔드. |
+
+---
+
 ## 빌드 환경
 
 - Visual Studio 2022 | Rider
 - CMake 3.20 이상
 - C++20
-- Windows SDK / DirectX12 최신 버전
+- Windows SDK / DirectX 12 최신 버전
 
 ---
 

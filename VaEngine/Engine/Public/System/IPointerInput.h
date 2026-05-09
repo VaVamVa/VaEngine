@@ -2,8 +2,9 @@
 
 #include <memory>
 #include <cstdint>
+#include "RHI/Common_RHI.h"
 
-enum class EPointerButton : uint32_t
+enum class EPointerButton : uint8_t
 {
 	Primary   = 0,  // 마우스 좌클릭 / 터치 탭
 	Secondary = 1,  // 마우스 우클릭 / 길게 누르기
@@ -12,11 +13,23 @@ enum class EPointerButton : uint32_t
 };
 
 // 포인터 이동 축 — InputContext에서 바인딩 소스로 사용
-enum class EPointerSource : uint32_t
+enum class EPointerSource : uint8_t
 {
 	DeltaX,      // 이번 프레임 수평 이동량
 	DeltaY,      // 이번 프레임 수직 이동량
 	ScrollDelta, // 이번 프레임 스크롤 이동량
+};
+
+enum class EPointerCoordType : uint8_t
+{
+	Absolute,	// 절대 좌표 (마우스, 터치)
+	Relative	// 상대 좌표 (게임패드 스틱, VR 컨트롤러)
+};
+
+enum class ECursorMode : uint8_t
+{
+	Free,     // 커서 표시, position 유효
+	Centered, // 커서 숨김·중앙 고정, delta만 유효
 };
 
 struct PointerState
@@ -32,13 +45,12 @@ struct PointerState
 class IPointerInput
 {
 public:
-	static std::unique_ptr<IPointerInput> Create();
+	static std::unique_ptr<IPointerInput> Create(NativeDisplayInfo displayInfo);
 	virtual ~IPointerInput() = default;
 
 	virtual void Update() = 0;
 
 	// 플랫폼 네이티브 이벤트 전달 (Windows: WM_MOUSEWHEEL 등)
-	// 기본 구현은 no-op — 다른 플랫폼 구현체는 재정의 불필요
 	virtual void ProcessNativeEvent(uintptr_t message, uintptr_t wParam, uintptr_t lParam) {}
 
 	virtual bool IsDown (EPointerButton btn) const = 0;
@@ -46,4 +58,7 @@ public:
 	virtual bool IsPress(EPointerButton btn) const = 0;
 
 	virtual PointerState GetState() const = 0;
+
+	virtual void        SetCursorMode(ECursorMode mode) = 0;
+	virtual ECursorMode GetCursorMode()           const = 0;
 };

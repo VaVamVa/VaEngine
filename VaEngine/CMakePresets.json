@@ -6,9 +6,10 @@
       "hidden": true,
       "description": "이곳에 Graphics API 설정을 추가할 수 있습니다.",
       "cacheVariables": {
-        "USE_DIRECTX": "OFF",
-        "USE_VULKAN": "OFF",
-        "USE_DEBUGGING": "OFF"
+        "USE_DIRECTX":     "OFF",
+        "USE_VULKAN":      "OFF",
+        "USE_DEBUGGING":   "OFF",
+        "USE_IMPORT_TOOL": "OFF"
       }
     },
     {
@@ -53,6 +54,20 @@
       }
     },
     {
+      "name": "asset-importer",
+      "displayName": "Asset Importer",
+      "inherits": "base",
+      "generator": "Visual Studio 18 2026",
+      "architecture": {
+        "value": "x64",
+        "strategy": "set"
+      },
+      "binaryDir": "${sourceDir}/Build/asset-importer",
+      "cacheVariables": {
+        "USE_IMPORT_TOOL": "ON"
+      }
+    },
+    {
       "name": "engine",
       "displayName": "Engine Debugging",
       "inherits": "base",
@@ -84,6 +99,10 @@
     {
       "name": "Debug Engine",
       "configurePreset": "engine"
+    },
+    {
+      "name": "Asset Importer",
+      "configurePreset": "asset-importer"
     }
   ]
 }

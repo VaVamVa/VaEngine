@@ -1,9 +1,9 @@
 #include "MouseInput_Windows.h"
 
 #include <cstring>
-#include <windows.h>
 
-MouseInput_Windows::MouseInput_Windows()
+MouseInput_Windows::MouseInput_Windows(NativeDisplayInfo displayInfo)
+	: hwnd(static_cast<HWND>(displayInfo.Handle))
 {
 	memset(prevBtn, 0, sizeof(prevBtn));
 	memset(currBtn, 0, sizeof(currBtn));
@@ -31,26 +31,47 @@ void MouseInput_Windows::Update()
 		else                                  btnMap[i] = None;
 	}
 
-	// 커서 위치 및 delta
-	POINT pt;
-	GetCursorPos(&pt);
-	float newX = static_cast<float>(pt.x);
-	float newY = static_cast<float>(pt.y);
-
-	if (firstUpdate)
+	if (cursorMode == ECursorMode::Centered && hwnd)
 	{
-		firstUpdate = false;
+		RECT rect;
+		GetClientRect(hwnd, &rect);
+		POINT center = { (rect.right - rect.left) / 2, (rect.bottom - rect.top) / 2 };
+		ClientToScreen(hwnd, &center);
+
+		POINT pt;
+		GetCursorPos(&pt);
+
+		if (firstUpdate)
+			firstUpdate = false;
+		else
+		{
+			state.deltaX = static_cast<float>(pt.x - center.x);
+			state.deltaY = static_cast<float>(pt.y - center.y);
+		}
+
+		SetCursorPos(center.x, center.y);
+		state.x = static_cast<float>(center.x);
+		state.y = static_cast<float>(center.y);
 	}
 	else
 	{
-		state.deltaX = newX - state.x;
-		state.deltaY = newY - state.y;
+		POINT pt;
+		GetCursorPos(&pt);
+		float newX = static_cast<float>(pt.x);
+		float newY = static_cast<float>(pt.y);
+
+		if (firstUpdate)
+			firstUpdate = false;
+		else
+		{
+			state.deltaX = newX - state.x;
+			state.deltaY = newY - state.y;
+		}
+
+		state.x = newX;
+		state.y = newY;
 	}
 
-	state.x = newX;
-	state.y = newY;
-
-	// scrollDelta는 ProcessNativeEvent에서 누적, 매 프레임 소비 후 초기화
 	state.scroll      += state.scrollDelta;
 	state.scrollDelta  = 0.0f;
 }
@@ -68,7 +89,23 @@ bool MouseInput_Windows::IsDown (EPointerButton btn) const { return btnMap[stati
 bool MouseInput_Windows::IsUp   (EPointerButton btn) const { return btnMap[static_cast<uint32_t>(btn)] == Up;    }
 bool MouseInput_Windows::IsPress(EPointerButton btn) const { return btnMap[static_cast<uint32_t>(btn)] == Press; }
 
-std::unique_ptr<IPointerInput> IPointerInput::Create()
+void MouseInput_Windows::SetCursorMode(ECursorMode mode)
 {
-	return std::make_unique<MouseInput_Windows>();
+	if (cursorMode == mode) return;
+	cursorMode = mode;
+
+	if (mode == ECursorMode::Centered)
+	{
+		ShowCursor(FALSE);
+		firstUpdate = true;
+	}
+	else
+	{
+		ShowCursor(TRUE);
+	}
+}
+
+std::unique_ptr<IPointerInput> IPointerInput::Create(NativeDisplayInfo displayInfo)
+{
+	return std::make_unique<MouseInput_Windows>(displayInfo);
 }

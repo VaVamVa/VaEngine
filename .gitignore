@@ -7,6 +7,12 @@
 ##
 ## Get latest from https://github.com/github/gitignore/blob/main/VisualStudio.gitignore
 
+# Asset Importer
+**/ImportTool/Assets/**
+!**/ImportTool/Assets/**/
+!**/ImportTool/Assets/Input/README.md
+!**/ImportTool/Assets/Output/README.md
+
 # AI Agent
 .claude
 **/ExternalSources/*

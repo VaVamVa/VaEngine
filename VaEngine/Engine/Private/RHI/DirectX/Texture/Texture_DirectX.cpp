@@ -5,6 +5,7 @@
 #include "RHI/DirectX/RenderDevice_DirectX.h"
 #include "RHI/DirectX/CommandList_DirectX.h"
 
+
 #include <stdexcept>
 
 void Texture_DirectX::LoadFromFile(IRenderDevice* device, const wchar_t* path)
@@ -17,18 +18,20 @@ void Texture_DirectX::LoadFromFile(IRenderDevice* device, const wchar_t* path)
 	if (!pixels)
 		throw std::runtime_error("Failed to load texture file");
 
-	Upload(static_cast<RenderDevice_DirectX*>(device)->GetDevice(),
+	Upload(static_cast<RenderDevice_DirectX*>(device),
 		pixels, static_cast<uint32_t>(width), static_cast<uint32_t>(height));
 	stbi_image_free(pixels);
 }
 
 void Texture_DirectX::LoadFromMemory(IRenderDevice* device, const void* pixels, uint32_t width, uint32_t height)
 {
-	Upload(static_cast<RenderDevice_DirectX*>(device)->GetDevice(), pixels, width, height);
+	Upload(static_cast<RenderDevice_DirectX*>(device), pixels, width, height);
 }
 
-void Texture_DirectX::Upload(ID3D12Device* device, const void* pixels, uint32_t width, uint32_t height)
+void Texture_DirectX::Upload(RenderDevice_DirectX* rdDevice, const void* pixels, uint32_t width, uint32_t height)
 {
+	ID3D12Device* device = rdDevice->GetDevice();
+
 	// 1. Default heap 텍스처 리소스 생성
 	auto texDesc    = CD3DX12_RESOURCE_DESC::Tex2D(DXGI_FORMAT_R8G8B8A8_UNORM, width, height);
 	auto defaultHeap = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
@@ -104,26 +107,23 @@ void Texture_DirectX::Upload(ID3D12Device* device, const void* pixels, uint32_t 
 	WaitForSingleObject(event, INFINITE);
 	CloseHandle(event);
 
-	// 8. SRV 디스크립터 힙 + SRV 생성
-	D3D12_DESCRIPTOR_HEAP_DESC heapDesc = {};
-	heapDesc.Type           = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
-	heapDesc.NumDescriptors = 1;
-	heapDesc.Flags          = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
-	device->CreateDescriptorHeap(&heapDesc, IID_PPV_ARGS(&srvHeap));
+	// 8. 전역 SRV heap에서 슬롯 할당 후 SRV 생성
+	auto srv = rdDevice->AllocateSRVDescriptor();
+	srvGpuHandle  = srv.gpu;
+	globalSrvHeap = rdDevice->GetGlobalSRVHeap();
 
 	D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
 	srvDesc.Format                  = DXGI_FORMAT_R8G8B8A8_UNORM;
 	srvDesc.ViewDimension           = D3D12_SRV_DIMENSION_TEXTURE2D;
 	srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
 	srvDesc.Texture2D.MipLevels     = 1;
-	device->CreateShaderResourceView(textureResource.Get(), &srvDesc,
-		srvHeap->GetCPUDescriptorHandleForHeapStart());
+	device->CreateShaderResourceView(textureResource.Get(), &srvDesc, srv.cpu);
 }
 
 void Texture_DirectX::Bind(ICommandList* cmdList, uint32_t slot)
 {
 	auto* d3dCmd = static_cast<CommandList_DirectX*>(cmdList)->GetHandle();
-	ID3D12DescriptorHeap* heaps[] = { srvHeap.Get() };
+	ID3D12DescriptorHeap* heaps[] = { globalSrvHeap };
 	d3dCmd->SetDescriptorHeaps(1, heaps);
-	d3dCmd->SetGraphicsRootDescriptorTable(slot, srvHeap->GetGPUDescriptorHandleForHeapStart());
+	d3dCmd->SetGraphicsRootDescriptorTable(slot, srvGpuHandle);
 }

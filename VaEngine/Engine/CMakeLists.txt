@@ -14,15 +14,42 @@ target_sources(Engine PUBLIC
 #공통 소스_Private
 file(GLOB_RECURSE ENGINE_SOURCES
     CONFIGURE_DEPENDS
+    "Private/Animation/*.cpp"
+    "Private/Asset/*.cpp"
     "Private/Core/*.cpp"
     "Private/Mesh/*.cpp"
-    "Private/System/Time.cpp"
-    "Private/System/InputSystem.cpp"
+    "Private/Object/*.cpp"
+    "Private/Scene/*.cpp"
+    "Private/Math/*.cpp"
+    "Private/Render/*.cpp"
+    "Private/System/Common/*.cpp"
+    "Private/Utilities/*.cpp"
+)
+file(GLOB ENGINE_RENDER_HEADERS
+    CONFIGURE_DEPENDS
+    "Private/Render/*.h"
 )
 target_sources(Engine PRIVATE
     Engine.cpp
     "Private/RHI/RHILoader.cpp"
+    "Private/Execute.cpp"
     ${ENGINE_SOURCES}
+)
+
+include(FetchContent)
+FetchContent_Declare(
+    stb
+    GIT_REPOSITORY https://github.com/nothings/stb.git
+    GIT_TAG master
+    GIT_SHALLOW TRUE
+)
+FetchContent_MakeAvailable(stb)
+target_include_directories(Engine PRIVATE ${stb_SOURCE_DIR})
+
+target_sources(Engine PRIVATE
+    FILE_SET nav_RENDER_HEADERS TYPE HEADERS
+    BASE_DIRS Private
+    FILES ${ENGINE_RENDER_HEADERS}
 )
 
 # Windows 플랫폼 입력 시스템
@@ -101,35 +128,69 @@ if(USE_DIRECTX)
     )
     target_sources(Engine PRIVATE ${ENGINE_DX12_SOURCES})
 
-    file(GLOB_RECURSE ENGINE_AGENT_DX12_HEADERS
-        CONFIGURE_DEPENDS
-        "Private/RHI/Agent/DirectX/*.h"
-    )
-    target_sources(Engine PRIVATE
-        FILE_SET nav_AGENT_DX12_HEADERS TYPE HEADERS
-        BASE_DIRS Private
-        FILES ${ENGINE_AGENT_DX12_HEADERS}
-    )
-    file(GLOB_RECURSE ENGINE_AGENT_DX12_SOURCES
-        CONFIGURE_DEPENDS
-        "Private/RHI/Agent/DirectX/*.cpp"
-    )
-    target_sources(Engine PRIVATE ${ENGINE_AGENT_DX12_SOURCES})
-
-    FetchContent_Declare(
-        stb
-        GIT_REPOSITORY https://github.com/nothings/stb.git
-        GIT_TAG master
-        GIT_SHALLOW TRUE
-    )
-    FetchContent_MakeAvailable(stb)
-    target_include_directories(Engine PRIVATE ${stb_SOURCE_DIR})
-
     target_link_libraries(Engine PRIVATE d3d12 dxgi dxguid d3dcompiler Microsoft::DirectX-Headers)
 
-    # 셰이더 절대 경로를 컴파일 타임 매크로로 주입 (런타임 작업 디렉토리 의존성 제거)
-    set(_dx_shader_dir "${CMAKE_CURRENT_SOURCE_DIR}/Private/RHI/DirectX/_Shaders")
-    target_compile_definitions(Engine PRIVATE "DX_SHADER_DIR=L\"${_dx_shader_dir}\"")
+    # 셰이더 오프라인 컴파일 (VaShaderCompiler → .cso)
+    set(_dx_shader_src "${CMAKE_CURRENT_SOURCE_DIR}/_Shaders/DirectX")
+    set(_dx_shader_common "${CMAKE_CURRENT_SOURCE_DIR}/_Shaders/Common")
+    set(_dx_shader_bin "${CMAKE_CURRENT_BINARY_DIR}/_Shaders")
+    file(MAKE_DIRECTORY "${_dx_shader_bin}")
+
+    add_custom_command(
+        OUTPUT
+            "${_dx_shader_bin}/CubeShader_VS.cso"
+            "${_dx_shader_bin}/CubeShader_PS.cso"
+        COMMAND $<TARGET_FILE:VaShaderCompiler>
+                --target dx
+                --in "${_dx_shader_src}/CubeShader.hlsl"
+                --stage vs --entry VSMain
+                --out "${_dx_shader_bin}/CubeShader_VS.cso"
+        COMMAND $<TARGET_FILE:VaShaderCompiler>
+                --target dx
+                --in "${_dx_shader_src}/CubeShader.hlsl"
+                --stage ps --entry PSMain
+                --out "${_dx_shader_bin}/CubeShader_PS.cso"
+        DEPENDS
+            VaShaderCompiler
+            "${_dx_shader_src}/CubeShader.hlsl"
+            "${_dx_shader_common}/Sampler.hlsli"
+        COMMENT "셰이더 컴파일: CubeShader"
+        VERBATIM
+    )
+
+    add_custom_command(
+        OUTPUT
+            "${_dx_shader_bin}/AnimationDemo_VS.cso"
+            "${_dx_shader_bin}/AnimationDemo_PS.cso"
+        COMMAND $<TARGET_FILE:VaShaderCompiler>
+                --target dx
+                --in "${_dx_shader_src}/AnimationDemo.hlsl"
+                --stage vs --entry VSMain
+                --out "${_dx_shader_bin}/AnimationDemo_VS.cso"
+        COMMAND $<TARGET_FILE:VaShaderCompiler>
+                --target dx
+                --in "${_dx_shader_src}/AnimationDemo.hlsl"
+                --stage ps --entry PSMain
+                --out "${_dx_shader_bin}/AnimationDemo_PS.cso"
+        DEPENDS
+            VaShaderCompiler
+            "${_dx_shader_src}/AnimationDemo.hlsl"
+            "${_dx_shader_common}/Lighting.hlsli"
+            "${_dx_shader_common}/Sampler.hlsli"
+        COMMENT "셰이더 컴파일: AnimationDemo"
+        VERBATIM
+    )
+
+    add_custom_target(CompileShaders DEPENDS
+        "${_dx_shader_bin}/CubeShader_VS.cso"
+        "${_dx_shader_bin}/CubeShader_PS.cso"
+        "${_dx_shader_bin}/AnimationDemo_VS.cso"
+        "${_dx_shader_bin}/AnimationDemo_PS.cso"
+    )
+    add_dependencies(Engine CompileShaders)
+
+    # .cso 출력 경로를 컴파일 타임 매크로로 주입
+    target_compile_definitions(Engine PRIVATE "SHADER_DIR=L\"${_dx_shader_bin}\"")
     
     get_target_property(_dx_includes Microsoft::DirectX-Headers INTERFACE_INCLUDE_DIRECTORIES)
     target_include_directories(Engine SYSTEM PRIVATE ${_dx_includes})

@@ -1,9 +1,3 @@
 #pragma once
-
-#include "MeshPrimitive.h"
-
-class Cube : public MeshPrimitive
-{
-protected:
-	void BuildGeometry() override;
-};
+// Deprecated — use CubeShape + MeshPrimitive
+#include "CubeShape.h"

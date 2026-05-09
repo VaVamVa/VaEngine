@@ -22,9 +22,15 @@ public:
 	void SetRenderTarget(IResourceView* rtv) override;
 	void SetViewport(float x, float y, float width, float height, float minDepth, float maxDepth) override;
 	void SetScissorRect(int32_t left, int32_t top, int32_t right, int32_t bottom) override;
-	void SetVertexBuffer(IResourceBuffer* vb, uint32_t stride, uint32_t totalSize) override;
-	void SetIndexBuffer(IResourceBuffer* ib, EIndexFormat format, uint32_t totalSize) override;
+	void SetVertexBuffer(IBuffer* vb, uint32_t stride, uint32_t totalSize) override;
+	void SetVertexBufferAt(IBuffer* vb, uint32_t slot, uint32_t stride, uint32_t totalSize, uint32_t byteOffset = 0) override;
+	void SetIndexBuffer(IBuffer* ib, EIndexFormat format, uint32_t totalSize) override;
+	void SetConstantBuffer(IBuffer* cb, uint32_t slot) override;
 	void DrawIndexed(uint32_t indexCount, uint32_t startIndex = 0, int32_t baseVertex = 0) override;
+	void DrawIndexedInstanced(uint32_t indexCount, uint32_t instanceCount, uint32_t startIndex = 0, int32_t baseVertex = 0, uint32_t startInstance = 0) override;
+	void SetPrimitiveTopology(EPrimitiveTopology topology) override;
+	void BeginRenderPass(const RenderPassDesc& desc) override;
+	void EndRenderPass() override;
 #pragma endregion Commands
 
 

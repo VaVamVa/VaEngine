@@ -27,7 +27,14 @@ private:
 	ComPtr<ID3D12DescriptorHeap> rtvHeap;  // RTV들이 담길 Heap
 
 	static constexpr uint32_t MAX_BUFFER_COUNT = 3;  // 최대 3중 버퍼링까지 고려
-	TRHIResource<ID3D12Resource> backBuffers[MAX_BUFFER_COUNT];
+
+	struct BackBufferResource : IRHIResource
+	{
+		ComPtr<ID3D12Resource> resource;
+		void* GetNativeResource() const override { return resource.Get(); }
+	};
+
+	BackBufferResource backBuffers[MAX_BUFFER_COUNT];
 	std::unique_ptr<IResourceView> backBufferViews[MAX_BUFFER_COUNT];
 
 	uint32_t bufferCount = 0;

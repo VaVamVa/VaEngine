@@ -1,9 +1,10 @@
 #pragma once
 
 #include <cstdint>
-#include "Common_RHI.h"
+#include "RHI/Common_RHI.h"
 
 class IBindingLayout;
+class IShader;
 
 // 셰이더 스테이지
 enum class EShaderStage : uint32_t
@@ -54,13 +55,14 @@ struct VertexInputDesc
 	uint32_t     semanticIndex;
 	EPixelFormat format;
 	uint32_t     byteOffset;
+	uint32_t     inputSlot   = 0;
+	bool         perInstance = false;
 };
 
 // PSO 생성 시 필요한 전체 서술자
 struct PipelineStateDesc
 {
-	const wchar_t*         vsPath;
-	const wchar_t*         psPath;
+	IShader*               shader         = nullptr;
 
 	const VertexInputDesc* vertexInputs;
 	uint32_t               vertexInputCount;

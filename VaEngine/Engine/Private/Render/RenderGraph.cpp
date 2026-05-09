@@ -1,0 +1,98 @@
+#include "Render/RenderGraph.h"
+#include "Scene/RenderScene.h"
+#include "RHI/ICommandList.h"
+#include "RHI/IRenderDevice.h"
+#include "Utilities/DebuggingHelper.h"
+#include <format>
+
+void RenderGraph::ImportResource(IRHIResource* resource, EResourceState initialState)
+{
+	resourceStates[resource] = initialState;
+}
+
+uint32_t RenderGraph::DeclareTransientDepth(const TransientDepthDesc& desc)
+{
+	for (uint32_t i = 0; i < static_cast<uint32_t>(transientDepths.size()); ++i)
+	{
+		const auto& td = transientDepths[i];
+		if (td.desc.width == desc.width && td.desc.height == desc.height && td.desc.format == desc.format)
+			return i;
+	}
+	transientDepths.push_back({ desc, nullptr });
+	return static_cast<uint32_t>(transientDepths.size() - 1);
+}
+
+IDepthBuffer* RenderGraph::GetTransientDepth(uint32_t handle) const
+{
+	return handle < static_cast<uint32_t>(transientDepths.size())
+		? transientDepths[handle].resource.get()
+		: nullptr;
+}
+
+void RenderGraph::Reset()
+{
+	entries.clear();
+	resourceStates.clear();
+	// transientDepths는 유지 — 다음 프레임에 동일 desc면 GPU 리소스 재사용
+}
+
+void RenderGraph::Compile(IRenderDevice* device)
+{
+	// 1. 미생성 트랜지언트 리소스 생성 (이미 있으면 재사용)
+	for (auto& td : transientDepths)
+	{
+		if (!td.resource)
+			td.resource = device->CreateDepthBuffer(td.desc.width, td.desc.height, td.desc.format);
+
+		// 깊이 버퍼는 항상 DepthWrite 상태로 시작
+		resourceStates[td.resource->GetResource()] = EResourceState::DepthWrite;
+	}
+
+	// 2. 패스에 트랜지언트 포인터 전달
+	for (PassEntry& entry : entries)
+		entry.pass->OnCompile(*this);
+
+	// 3. 배리어 사전 계산
+	for (PassEntry& entry : entries)
+	{
+		std::vector<PassResourceDecl> reads, writes;
+		entry.pass->DeclareResources(reads, writes);
+
+		auto transition = [&](const PassResourceDecl& decl)
+		{
+			auto it = resourceStates.find(decl.resource);
+			if (it != resourceStates.end() && it->second != decl.requiredState)
+			{
+				VA_LOG("RenderGraph", std::format("Barrier: Resource[{:p}] {} -> {}", 
+					(void*)decl.resource, (uint32_t)it->second, (uint32_t)decl.requiredState));
+
+				entry.preBarriers.push_back({ decl.resource, it->second, decl.requiredState });
+				it->second = decl.requiredState;
+			}
+		};
+
+		for (const PassResourceDecl& d : reads)  transition(d);
+		for (const PassResourceDecl& d : writes) transition(d);
+	}
+}
+
+void RenderGraph::Execute(ICommandList* cmdList, const RenderScene& scene)
+{
+	for (PassEntry& entry : entries)
+	{
+		if (!entry.preBarriers.empty())
+		{
+			cmdList->SetResourceBarrier(
+				static_cast<uint32_t>(entry.preBarriers.size()),
+				entry.preBarriers.data()
+			);
+		}
+		entry.pass->Execute(cmdList, scene);
+	}
+}
+
+EResourceState RenderGraph::GetCurrentState(IRHIResource* resource) const
+{
+	auto it = resourceStates.find(resource);
+	return it != resourceStates.end() ? it->second : EResourceState::Common;
+}

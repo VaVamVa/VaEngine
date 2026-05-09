@@ -142,26 +142,98 @@ void CommandList_DirectX::SetScissorRect(int32_t left, int32_t top, int32_t righ
 	commandList->RSSetScissorRects(1, &rect);
 }
 
-void CommandList_DirectX::SetVertexBuffer(IResourceBuffer* vb, uint32_t stride, uint32_t totalSize)
+void CommandList_DirectX::SetVertexBuffer(IBuffer* vb, uint32_t stride, uint32_t totalSize)
 {
 	D3D12_VERTEX_BUFFER_VIEW view = {};
-	view.BufferLocation = static_cast<ID3D12Resource*>(vb->GetResource()->GetNativeResource())->GetGPUVirtualAddress();
+	view.BufferLocation = static_cast<ID3D12Resource*>(vb->GetNativeResource())->GetGPUVirtualAddress();
 	view.StrideInBytes  = stride;
 	view.SizeInBytes    = totalSize;
 	commandList->IASetVertexBuffers(0, 1, &view);
 }
 
-void CommandList_DirectX::SetIndexBuffer(IResourceBuffer* ib, EIndexFormat format, uint32_t totalSize)
+void CommandList_DirectX::SetVertexBufferAt(IBuffer* vb, uint32_t slot, uint32_t stride, uint32_t totalSize, uint32_t byteOffset)
+{
+	D3D12_VERTEX_BUFFER_VIEW view = {};
+	view.BufferLocation = static_cast<ID3D12Resource*>(vb->GetNativeResource())->GetGPUVirtualAddress() + byteOffset;
+	view.StrideInBytes  = stride;
+	view.SizeInBytes    = totalSize;
+	commandList->IASetVertexBuffers(slot, 1, &view);
+}
+
+void CommandList_DirectX::SetIndexBuffer(IBuffer* ib, EIndexFormat format, uint32_t totalSize)
 {
 	D3D12_INDEX_BUFFER_VIEW view = {};
-	view.BufferLocation = static_cast<ID3D12Resource*>(ib->GetResource()->GetNativeResource())->GetGPUVirtualAddress();
+	view.BufferLocation = static_cast<ID3D12Resource*>(ib->GetNativeResource())->GetGPUVirtualAddress();
 	view.Format         = (format == EIndexFormat::UInt16) ? DXGI_FORMAT_R16_UINT : DXGI_FORMAT_R32_UINT;
 	view.SizeInBytes    = totalSize;
 	commandList->IASetIndexBuffer(&view);
 }
 
+void CommandList_DirectX::SetConstantBuffer(IBuffer* cb, uint32_t slot)
+{
+	D3D12_GPU_VIRTUAL_ADDRESS address =
+		static_cast<ID3D12Resource*>(cb->GetNativeResource())->GetGPUVirtualAddress();
+	commandList->SetGraphicsRootConstantBufferView(slot, address);
+}
+
 void CommandList_DirectX::DrawIndexed(uint32_t indexCount, uint32_t startIndex, int32_t baseVertex)
 {
 	commandList->DrawIndexedInstanced(indexCount, 1, startIndex, baseVertex, 0);
+}
+
+void CommandList_DirectX::DrawIndexedInstanced(uint32_t indexCount, uint32_t instanceCount, uint32_t startIndex, int32_t baseVertex, uint32_t startInstance)
+{
+	commandList->DrawIndexedInstanced(indexCount, instanceCount, startIndex, baseVertex, startInstance);
+}
+
+void CommandList_DirectX::SetPrimitiveTopology(EPrimitiveTopology topology)
+{
+	D3D12_PRIMITIVE_TOPOLOGY dxTopology = D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
+	switch (topology)
+	{
+		case EPrimitiveTopology::TriangleList:  dxTopology = D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;  break;
+		case EPrimitiveTopology::TriangleStrip: dxTopology = D3D_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP; break;
+		case EPrimitiveTopology::LineList:      dxTopology = D3D_PRIMITIVE_TOPOLOGY_LINELIST;      break;
+		case EPrimitiveTopology::PointList:     dxTopology = D3D_PRIMITIVE_TOPOLOGY_POINTLIST;     break;
+	}
+	commandList->IASetPrimitiveTopology(dxTopology);
+}
+
+void CommandList_DirectX::BeginRenderPass(const RenderPassDesc& desc)
+{
+	D3D12_CPU_DESCRIPTOR_HANDLE rtvHandles[8] = {};
+	for (uint32_t i = 0; i < desc.renderTargetCount; ++i)
+		rtvHandles[i] = static_cast<ResourceView_DirectX*>(desc.renderTargets[i].view)->GetRTVHandle();
+
+	const bool hasDepth = (desc.depthStencil.view != nullptr);
+	D3D12_CPU_DESCRIPTOR_HANDLE dsvHandle = {};
+	if (hasDepth)
+		dsvHandle = static_cast<ResourceView_DirectX*>(desc.depthStencil.view)->GetRTVHandle();
+
+	commandList->OMSetRenderTargets(
+		desc.renderTargetCount, rtvHandles, FALSE,
+		hasDepth ? &dsvHandle : nullptr
+	);
+
+	for (uint32_t i = 0; i < desc.renderTargetCount; ++i)
+	{
+		if (desc.renderTargets[i].loadAction == ELoadAction::Clear)
+			commandList->ClearRenderTargetView(rtvHandles[i], desc.renderTargets[i].clearColor, 0, nullptr);
+	}
+
+	if (hasDepth && desc.depthStencil.loadAction == ELoadAction::Clear)
+	{
+		commandList->ClearDepthStencilView(
+			dsvHandle,
+			D3D12_CLEAR_FLAG_DEPTH,
+			desc.depthStencil.clearColor[0],  // clearDepth (1.0f)
+			0,                                 // clearStencil
+			0, nullptr
+		);
+	}
+}
+
+void CommandList_DirectX::EndRenderPass()
+{
 }
 

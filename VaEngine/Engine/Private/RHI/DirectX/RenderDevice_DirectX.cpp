@@ -5,11 +5,15 @@
 #include "Fence_DirectX.h"
 #include "CommandList_DirectX.h"
 #include "CommandAlloc_DirectX.h"
-#include "RHI/DirectX/Buffer/ResourceBuffer_DirectX.h"
-#include "RHI/DirectX/Buffer/ConstantBuffer_DirectX.h"
+#include "RHI/DirectX/Buffer/Buffer_DirectX.h"
 #include "RHI/DirectX/Pipeline/BindingLayout_DirectX.h"
 #include "RHI/DirectX/Pipeline/PipelineState_DirectX.h"
 #include "RHI/DirectX/Texture/Texture_DirectX.h"
+#include "RHI/DirectX/Texture/Texture2DArray_DX.h"
+#include "RHI/DirectX/Shader/Shader_DirectX.h"
+#include "RHI/DirectX/DepthBuffer_DirectX.h"
+#include "Utilities/DebuggingHelper.h"
+#include <format>
 
 void RenderDevice_DirectX::Initialize()
 {
@@ -37,6 +41,7 @@ std::unique_ptr<ISwapChain> RenderDevice_DirectX::CreateSwapChain(const SwapChai
     {
         throw std::runtime_error("Handles must be registered before creating Swap Chain");
     }
+	VA_LOG("RHI", "CreateSwapChain");
 	std::unique_ptr<ISwapChain> swapChain = std::make_unique<SwapChain_DirectX>();
 	swapChain->Register(this, desc);
 	return swapChain;
@@ -44,6 +49,7 @@ std::unique_ptr<ISwapChain> RenderDevice_DirectX::CreateSwapChain(const SwapChai
 
 std::unique_ptr<ICommandQueue> RenderDevice_DirectX::CreateCommandQueue(const CommandQueueDesc& desc)
 {
+	VA_LOG("RHI", std::format("CreateCommandQueue: Type={}", (uint32_t)desc.type));
 	std::unique_ptr<ICommandQueue> queue = std::make_unique<CommandQueue_DirectX>();
 	queue->Register(this, desc);
 	return queue;
@@ -51,6 +57,7 @@ std::unique_ptr<ICommandQueue> RenderDevice_DirectX::CreateCommandQueue(const Co
 
 std::unique_ptr<IFence> RenderDevice_DirectX::CreateFence()
 {
+	VA_LOG("RHI", "CreateFence");
     std::unique_ptr<IFence> fence = std::make_unique<Fence_DirectX>();
 	fence->Register(this);
 	return fence;
@@ -58,6 +65,7 @@ std::unique_ptr<IFence> RenderDevice_DirectX::CreateFence()
 
 std::unique_ptr<ICommandList> RenderDevice_DirectX::CreateCommandList(const CommandListDesc& desc)
 {
+	VA_LOG("RHI", std::format("CreateCommandList: Type={}", (uint32_t)desc.type));
 	std::unique_ptr<ICommandList> commandList = std::make_unique<CommandList_DirectX>();
 	commandList->Register(this, desc);
 	return commandList;
@@ -65,27 +73,23 @@ std::unique_ptr<ICommandList> RenderDevice_DirectX::CreateCommandList(const Comm
 
 std::unique_ptr<ICommandAlloc> RenderDevice_DirectX::CreateCommandAllocator(const CommandAllocDesc& desc)
 {
+	VA_LOG("RHI", std::format("CreateCommandAllocator: Type={}", (uint32_t)desc.type));
 	std::unique_ptr<ICommandAlloc> commandAllocator = std::make_unique<CommandAlloc_DirectX>();
 	commandAllocator->Register(this, desc);
     return commandAllocator;
 }
 
-std::unique_ptr<IResourceBuffer> RenderDevice_DirectX::CreateBuffer(const ResourceBufferDesc& desc)
+std::unique_ptr<IBuffer> RenderDevice_DirectX::CreateBuffer(const BufferDesc& desc)
 {
-	auto buffer = std::make_unique<ResourceBuffer_DX12>();
+	VA_LOG("RHI", std::format("CreateBuffer: Size={}, Usage={}", desc.size, (uint32_t)desc.usage));
+	auto buffer = std::make_unique<Buffer_DirectX>();
 	buffer->Create(device.Get(), desc);
-	return buffer;
-}
-
-std::unique_ptr<IConstantBuffer> RenderDevice_DirectX::CreateConstantBuffer(size_t size)
-{
-	auto buffer = std::make_unique<ConstantBuffer_DirectX>();
-	buffer->Create(device.Get(), size);
 	return buffer;
 }
 
 std::unique_ptr<IBindingLayout> RenderDevice_DirectX::CreateBindingLayout(const BindingEntry* entries, uint32_t count)
 {
+	VA_LOG("RHI", std::format("CreateBindingLayout: Count={}", count));
 	auto layout = std::make_unique<BindingLayout_DirectX>();
 	layout->Create(device.Get(), entries, count);
 	return layout;
@@ -93,6 +97,7 @@ std::unique_ptr<IBindingLayout> RenderDevice_DirectX::CreateBindingLayout(const 
 
 std::unique_ptr<IPipelineState> RenderDevice_DirectX::CreatePipelineState(const PipelineStateDesc& desc)
 {
+	VA_LOG("RHI", "CreatePipelineState");
 	auto state = std::make_unique<PipelineState_DirectX>();
 	state->Create(device.Get(), desc);
 	return state;
@@ -100,7 +105,30 @@ std::unique_ptr<IPipelineState> RenderDevice_DirectX::CreatePipelineState(const 
 
 std::unique_ptr<ITexture> RenderDevice_DirectX::CreateTexture()
 {
+	VA_LOG("RHI", "CreateTexture");
 	return std::make_unique<Texture_DirectX>();
+}
+
+std::unique_ptr<ITexture2DArray> RenderDevice_DirectX::CreateTexture2DArray()
+{
+	VA_LOG("RHI", "CreateTexture2DArray");
+	return std::make_unique<Texture2DArray_DX>();
+}
+
+std::unique_ptr<IDepthBuffer> RenderDevice_DirectX::CreateDepthBuffer(uint32_t width, uint32_t height, EPixelFormat format)
+{
+	VA_LOG("RHI", std::format("CreateDepthBuffer: {}x{}", width, height));
+	auto buffer = std::make_unique<DepthBuffer_DirectX>();
+	buffer->Create(device.Get(), width, height, static_cast<DXGI_FORMAT>(format));
+	return buffer;
+}
+
+std::unique_ptr<IShader> RenderDevice_DirectX::CreateShader(const ShaderDesc& desc)
+{
+	VA_LOG("RHI", "CreateShader");
+	auto shader = std::make_unique<Shader_DirectX>();
+	shader->Load(desc);
+	return shader;
 }
 
 void RenderDevice_DirectX::EnableDebugLayer()
@@ -187,11 +215,11 @@ void RenderDevice_DirectX::CreateDevice()
             
             // 필요에 따라 경고도 가능
             // infoQueue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_WARNING, TRUE);
-            
+
             /* 너무 빈번하거나 무시해도 되는 특정 경고 메시지는 필터링 가능
-            D3D12_MESSAGE_ID hideMessages[] = { 
+            D3D12_MESSAGE_ID hideMessages[] = {
                 D3D12_MESSAGE_ID_CLEARRENDERTARGETVIEW_MISMATCHINGCLEARVALUE
-                , ... 
+                , ...
             };
             D3D12_INFO_QUEUE_FILTER filter = {};
             filter.DenyList.NumIDs = _countof(hideMessages);
@@ -202,4 +230,27 @@ void RenderDevice_DirectX::CreateDevice()
         }
 	}
 #endif
+
+    D3D12_DESCRIPTOR_HEAP_DESC heapDesc = {};
+    heapDesc.Type           = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
+    heapDesc.NumDescriptors = GLOBAL_SRV_HEAP_SIZE;
+    heapDesc.Flags          = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
+    if (FAILED(device->CreateDescriptorHeap(&heapDesc, IID_PPV_ARGS(&globalSrvHeap))))
+        throw std::runtime_error("Failed to create global SRV descriptor heap");
+
+    srvDescriptorSize = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+}
+
+RenderDevice_DirectX::SRVDescriptor RenderDevice_DirectX::AllocateSRVDescriptor()
+{
+    if (srvAllocIndex >= GLOBAL_SRV_HEAP_SIZE)
+        throw std::runtime_error("Global SRV heap exhausted");
+
+    const uint32_t idx = srvAllocIndex++;
+    SRVDescriptor desc;
+    desc.cpu = CD3DX12_CPU_DESCRIPTOR_HANDLE(
+        globalSrvHeap->GetCPUDescriptorHandleForHeapStart(), idx, srvDescriptorSize);
+    desc.gpu = CD3DX12_GPU_DESCRIPTOR_HANDLE(
+        globalSrvHeap->GetGPUDescriptorHandleForHeapStart(), idx, srvDescriptorSize);
+    return desc;
 }

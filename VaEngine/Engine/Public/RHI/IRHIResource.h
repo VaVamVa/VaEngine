@@ -26,7 +26,6 @@ public:
 	virtual ~TRHIResource() = default;
 
 	virtual ResourceType* GetResource() const { return resource.get(); }
-	virtual ResourceType* operator->() const { return resource.get(); }
 	virtual ResourceType& operator*() const { return *resource; }
 
 	virtual void* GetNativeResource() const override

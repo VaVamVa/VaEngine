@@ -18,6 +18,6 @@ public:
 	virtual ~IFence() = default;
 
 	virtual void		Register(IRenderDevice* inDevice) = 0;
-	virtual void		SetEventOnComplete(uint64_t value, void* inEventHandle) = 0;
+	virtual void		Wait(uint64_t value) = 0;
 	virtual uint64_t	GetCompletedValue() const = 0;
 };

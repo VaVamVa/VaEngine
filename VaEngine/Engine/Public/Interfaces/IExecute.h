@@ -2,8 +2,14 @@
 
 #include "RHI/Common_RHI.h"
 
+#include <memory>
+
+class ApplicationManager;
+
 class IExecute {
 public:
+	static std::unique_ptr<IExecute> Create(ApplicationManager* app);
+
 	virtual ~IExecute() = default;
 	
 #pragma region Lifecycle
@@ -13,15 +19,6 @@ public:
 	virtual void OnLoop() = 0;
 	virtual void OnSuspend() {}
 	virtual void OnResume() {}
-
-protected:
-	virtual void OnRelease() = 0;
-
-	virtual void OnPreUpdate() = 0;
-	virtual void OnUpdate() = 0;
-	virtual void OnPreRender() = 0;
-	virtual void OnRender() = 0;
-	virtual void OnPostRender() = 0;
 #pragma endregion Lifecycle
 	
 };

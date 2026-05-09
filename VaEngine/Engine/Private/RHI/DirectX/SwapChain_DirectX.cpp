@@ -74,8 +74,7 @@ void SwapChain_DirectX::Resize(uint32_t width, uint32_t height)
 
 IRHIResource* SwapChain_DirectX::GetCurrentBackBuffer() const
 {
-	const IRHIResource* backBuffer = static_cast<const IRHIResource*>(&backBuffers[GetCurrentBackBufferIndex()]);
-	return const_cast<IRHIResource*>(backBuffer);
+	return const_cast<BackBufferResource*>(&backBuffers[GetCurrentBackBufferIndex()]);
 }
 
 uint32_t SwapChain_DirectX::GetCurrentBackBufferIndex() const
@@ -107,25 +106,16 @@ void SwapChain_DirectX::CreateRTV(RenderDevice_DirectX* device)
 	assert(bufferCount <= MAX_BUFFER_COUNT);
 	for (uint32_t i = 0; i < bufferCount; ++i)
 	{
-		ComPtr<ID3D12Resource> backBuffer;
-		if(FAILED(swapChain->GetBuffer(i, IID_PPV_ARGS(&backBuffer))))
+		if (FAILED(swapChain->GetBuffer(i, IID_PPV_ARGS(&backBuffers[i].resource))))
 		{
 			throw std::runtime_error("Failed to get back buffer from Swap Chain");
 		}
 
-		backBuffers[i] = TRHIResource<ID3D12Resource>(
-			backBuffer.Detach(),
-			[](ID3D12Resource* ptr) -> void 
-			{
-				if (ptr) { ptr->Release(); }
-			}
-		);
-
 		// RTV 생성 & 힙의 i번째 슬롯에 RTV를 할당
-		device->GetDevice()->CreateRenderTargetView(backBuffers[i].GetResource(), nullptr, rtvHandle);
+		device->GetDevice()->CreateRenderTargetView(backBuffers[i].resource.Get(), nullptr, rtvHandle);
 
 		ResourceViewDesc desc{
-				.type = EResourceViewType::RenderTargetView,
+			.type = EResourceViewType::RenderTargetView,
 		};
 		backBufferViews[i] = std::make_unique<ResourceView_DirectX>(desc, rtvHandle, &backBuffers[i]);
 

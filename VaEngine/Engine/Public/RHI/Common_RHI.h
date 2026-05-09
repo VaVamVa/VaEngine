@@ -23,6 +23,7 @@ enum class EPixelFormat : uint32_t
 {
 	Unknown					= 0,
 	R32G32B32A32_FLOAT		= 2,
+	R32G32B32A32_UINT		= 3,
 	R32G32B32_FLOAT			= 6,
 	R32G32_FLOAT			= 16,
 	R32_FLOAT				= 41,
@@ -145,16 +146,54 @@ enum class EMemoryAccess : uint32_t
 	Readback	= 2,	// GPU 쓰기, CPU 읽기 (D3D12_HEAP_TYPE_READBACK)
 };
 
-struct ResourceBufferDesc
+struct BufferDesc
 {
-	uint64_t		size	= 0;
-	EBufferUsage	usage	= EBufferUsage::None;
-	EMemoryAccess	access	= EMemoryAccess::Default;
-	uint32_t		stride	= 0;	// 정점 크기(VertexBuffer) 또는 원소 크기
+	uint64_t      size   = 0;
+	EBufferUsage  usage  = EBufferUsage::None;
+	EMemoryAccess access = EMemoryAccess::Default;
+	uint32_t      stride = 0;   // 정점 크기(VertexBuffer) 또는 원소 크기
 };
+
+using ResourceBufferDesc = BufferDesc;  // deprecated alias
 
 enum class EIndexFormat : uint32_t
 {
 	UInt16 = 0,
 	UInt32 = 1,
+};
+
+enum class EPrimitiveTopology : uint32_t
+{
+	TriangleList  = 0,
+	TriangleStrip = 1,
+	LineList      = 2,
+	PointList     = 3,
+};
+
+enum class ELoadAction : uint8_t
+{
+	Load,		// 이전 내용 유지
+	Clear,		// 지정한 색으로 지움
+	DontCare,	// 초기 내용 무관 (타일 기반 GPU 최적화)
+};
+
+enum class EStoreAction : uint8_t
+{
+	Store,		// 결과를 메모리에 기록
+	DontCare,	// 결과 불필요 (타일 기반 GPU 최적화)
+};
+
+struct RenderPassAttachment
+{
+	class IResourceView* view        = nullptr;
+	ELoadAction          loadAction  = ELoadAction::Load;
+	EStoreAction         storeAction = EStoreAction::Store;
+	float                clearColor[4] = {};
+};
+
+struct RenderPassDesc
+{
+	uint32_t             renderTargetCount = 0;
+	RenderPassAttachment renderTargets[8]  = {};
+	RenderPassAttachment depthStencil;
 };

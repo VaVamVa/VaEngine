@@ -65,6 +65,13 @@ enum class EKeyCode : uint32_t
 	Max = 0x200
 };
 
+enum class EInputTrigger : uint8_t
+{
+	Down,   // 누르는 첫 프레임
+	Press,  // 누르는 동안 매 프레임
+	Up,     // 떼는 첫 프레임
+};
+
 class IKeyInput
 {
 public:
