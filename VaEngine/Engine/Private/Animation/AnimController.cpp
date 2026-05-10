@@ -33,6 +33,7 @@ void AnimController::Play(uint32_t instance, uint32_t clip, float speed)
 {
     if (instance >= states.size()) return;
     auto& s       = states[instance];
+    s.mode        = EAnimBlendMode::Tween;
     s.clip        = clip;
     s.speed       = speed;
     s.runningTime = 0.0f;
@@ -44,11 +45,39 @@ void AnimController::PlayTween(uint32_t instance, uint32_t nextClip, float blend
 {
     if (instance >= states.size()) return;
     auto& s       = states[instance];
+    s.mode        = EAnimBlendMode::Tween;
     s.nextClip    = nextClip;
     s.nextSpeed   = speed;
     s.nextRunTime = 0.0f;
     s.tweenTime   = 0.0f;
     s.blendTime   = blendTime;
+}
+
+void AnimController::PlayBlend(uint32_t instance,
+                                uint32_t clip0, uint32_t clip1, uint32_t clip2,
+                                float speed0, float speed1, float speed2)
+{
+    if (instance >= states.size()) return;
+    auto& s       = states[instance];
+    s.mode        = EAnimBlendMode::Blend;
+    s.clip        = clip0;
+    s.speed       = speed0;
+    s.runningTime = 0.0f;
+    s.blendClip1  = clip1;
+    s.speed1      = speed1;
+    s.runTime1    = 0.0f;
+    s.blendClip2  = clip2;
+    s.speed2      = speed2;
+    s.runTime2    = 0.0f;
+    s.blendAlpha  = 0.0f;
+    s.blendTime   = 0.0f;
+    s.tweenTime   = 0.0f;
+}
+
+void AnimController::SetBlendAlpha(uint32_t instance, float alpha)
+{
+    if (instance >= states.size()) return;
+    states[instance].blendAlpha = std::clamp(alpha, 0.0f, 2.0f);
 }
 
 void AnimController::Update(float deltaTime, const std::vector<AnimClipData>& clips)
@@ -60,38 +89,55 @@ void AnimController::Update(float deltaTime, const std::vector<AnimClipData>& cl
         auto& s   = states[i];
         auto& gpu = gpuData[i];
 
-        if (s.clip >= clipCount) continue;
-        if (clips[s.clip].frameCount < 2) continue;
-
-        gpu.current = AdvanceClip(s.clip, s.runningTime, s.speed, deltaTime, clips);
-
-        if (s.blendTime > 0.0f)
+        if (s.mode == EAnimBlendMode::Blend)
         {
-            s.tweenTime = std::min(s.tweenTime + deltaTime / s.blendTime, 1.0f);
+            gpu.mode       = EAnimBlendMode::Blend;
+            gpu.blendAlpha = s.blendAlpha;
+            gpu.tweenTime  = 0.0f;
 
-            if (s.nextClip < clipCount && clips[s.nextClip].frameCount >= 2)
-                gpu.next = AdvanceClip(s.nextClip, s.nextRunTime, s.nextSpeed, deltaTime, clips);
-
-            if (s.tweenTime >= 1.0f)
-            {
-                // 전환 완료: next 클립이 current로
-                s.clip        = s.nextClip;
-                s.runningTime = s.nextRunTime;
-                s.speed       = s.nextSpeed;
-                s.blendTime   = 0.0f;
-                s.tweenTime   = 0.0f;
-                gpu.current   = gpu.next;
-                gpu.tweenTime = 0.0f;
-            }
-            else
-            {
-                gpu.tweenTime = s.tweenTime;
-            }
+            if (s.clip < clipCount && clips[s.clip].frameCount >= 2)
+                gpu.frame0 = AdvanceClip(s.clip, s.runningTime, s.speed, deltaTime, clips);
+            if (s.blendClip1 < clipCount && clips[s.blendClip1].frameCount >= 2)
+                gpu.frame1 = AdvanceClip(s.blendClip1, s.runTime1, s.speed1, deltaTime, clips);
+            if (s.blendClip2 < clipCount && clips[s.blendClip2].frameCount >= 2)
+                gpu.frame2 = AdvanceClip(s.blendClip2, s.runTime2, s.speed2, deltaTime, clips);
         }
         else
         {
-            gpu.tweenTime = 0.0f;
-            gpu.next      = gpu.current;
+            if (s.clip >= clipCount) continue;
+            if (clips[s.clip].frameCount < 2) continue;
+
+            gpu.mode       = EAnimBlendMode::Tween;
+            gpu.blendAlpha = 0.0f;
+            gpu.frame0     = AdvanceClip(s.clip, s.runningTime, s.speed, deltaTime, clips);
+
+            if (s.blendTime > 0.0f)
+            {
+                s.tweenTime = std::min(s.tweenTime + deltaTime / s.blendTime, 1.0f);
+
+                if (s.nextClip < clipCount && clips[s.nextClip].frameCount >= 2)
+                    gpu.frame1 = AdvanceClip(s.nextClip, s.nextRunTime, s.nextSpeed, deltaTime, clips);
+
+                if (s.tweenTime >= 1.0f)
+                {
+                    s.clip        = s.nextClip;
+                    s.runningTime = s.nextRunTime;
+                    s.speed       = s.nextSpeed;
+                    s.blendTime   = 0.0f;
+                    s.tweenTime   = 0.0f;
+                    gpu.frame0    = gpu.frame1;
+                    gpu.tweenTime = 0.0f;
+                }
+                else
+                {
+                    gpu.tweenTime = s.tweenTime;
+                }
+            }
+            else
+            {
+                gpu.tweenTime = 0.0f;
+                gpu.frame1    = gpu.frame0;
+            }
         }
     }
 }

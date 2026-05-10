@@ -6,8 +6,12 @@ void Buffer_DirectX::Create(ID3D12Device* device, const BufferDesc& desc)
 {
 	size_t allocSize = static_cast<size_t>(desc.size);
 
+	const uint32_t usageBits = static_cast<uint32_t>(desc.usage);
+	const bool     isCBV     = usageBits & static_cast<uint32_t>(EBufferUsage::ConstantBuffer);
+	const bool     isUAV     = usageBits & static_cast<uint32_t>(EBufferUsage::UnorderedAccess);
+
 	// CBV는 256바이트 정렬 필요
-	if (static_cast<uint32_t>(desc.usage) & static_cast<uint32_t>(EBufferUsage::ConstantBuffer))
+	if (isCBV)
 		allocSize = (allocSize + 255) & ~size_t(255);
 
 	D3D12_HEAP_PROPERTIES heapProps = {};
@@ -27,11 +31,17 @@ void Buffer_DirectX::Create(ID3D12Device* device, const BufferDesc& desc)
 	resourceDesc.Format             = DXGI_FORMAT_UNKNOWN;
 	resourceDesc.SampleDesc.Count   = 1;
 	resourceDesc.Layout             = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
-	resourceDesc.Flags              = D3D12_RESOURCE_FLAG_NONE;
+	resourceDesc.Flags              = isUAV
+		? D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS
+		: D3D12_RESOURCE_FLAG_NONE;
 
-	D3D12_RESOURCE_STATES initialState = (desc.access == EMemoryAccess::Upload)
-		? D3D12_RESOURCE_STATE_GENERIC_READ
-		: D3D12_RESOURCE_STATE_COMMON;
+	D3D12_RESOURCE_STATES initialState;
+	if (desc.access == EMemoryAccess::Upload)
+		initialState = D3D12_RESOURCE_STATE_GENERIC_READ;
+	else if (isUAV)
+		initialState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+	else
+		initialState = D3D12_RESOURCE_STATE_COMMON;
 
 	if (FAILED(device->CreateCommittedResource(
 		&heapProps,

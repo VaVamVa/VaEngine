@@ -7,6 +7,8 @@
 #include "RHI/IRHIResource.h"
 #include "RHI/Shader/IShader.h"
 
+#include "Demo/HelloCompute.h"
+
 #include "Utilities/Locator.h"
 #include "Utilities/DebuggingHelper.h"
 
@@ -28,6 +30,7 @@ Execute::~Execute() = default;
 
 void Execute::OnInitialize(NativeDisplayInfo displayInfo)
 {
+	DebuggingHelper::InitLog(_FILES_DIR "Log/");
 	VA_LOG("Execute", "Initializing Execute...");
 
 	keyInput     = IKeyInput::Create();
@@ -37,6 +40,9 @@ void Execute::OnInitialize(NativeDisplayInfo displayInfo)
 	Locator<InputSystem>::Register(inputSystem.get());
 	Locator<IPointerInput>::Register(pointerInput.get());
 
+	timerSystem = std::make_unique<TimerSystem>();
+	Locator<TimerSystem>::Register(timerSystem.get());
+
 	time = ITime::Create();
 	time->Start();
 	Locator<ITimeReader>::Register(time.get());
@@ -44,6 +50,9 @@ void Execute::OnInitialize(NativeDisplayInfo displayInfo)
 	if (renderDevice = RHI::CreateRenderDevice())
 	{
 		renderDevice->Initialize();
+
+		// Step 2 — RHI Compute 인프라 자기 검증 (1회 실행, VA_DRAW_PANEL에 PASS/FAIL 표시)
+		HelloCompute::Run(renderDevice.get());
 
 		CommandQueueDesc queueDesc = {
 			.type  = ECommandQueueType::Graphics,
@@ -70,11 +79,29 @@ void Execute::OnInitialize(NativeDisplayInfo displayInfo)
 #ifdef USE_DIRECTX
 		VA_LOG("RHI", "Active Backend: DirectX 12");
 		renderer.Initialize(renderDevice.get(), {
-			SHADER_DIR L"/CubeShader_VS.cso",
-			SHADER_DIR L"/CubeShader_PS.cso",
+			SHADER_DIR L"/ForwardOpaque_VS.cso",
+			SHADER_DIR L"/ForwardOpaque_PS.cso",
 			"VSMain",
 			"PSMain"
 		});
+		renderer.InitializeSky(renderDevice.get(), {
+			SHADER_DIR L"/Sky_VS.cso",
+			SHADER_DIR L"/Sky_PS.cso",
+			"VSMain",
+			"PSMain"
+		});
+		renderer.InitializeDebugLines(renderDevice.get(), {
+			SHADER_DIR L"/DebugLine_VS.cso",
+			SHADER_DIR L"/DebugLine_PS.cso",
+			"VSMain",
+			"PSMain"
+		});
+		renderer.InitializeDebugText(renderDevice.get(), {
+			SHADER_DIR L"/Glyph_VS.cso",
+			SHADER_DIR L"/Glyph_PS.cso",
+			"VSMain",
+			"PSMain"
+		}, _FILES_DIR "Font/NotoSansKR-Regular.ttf");
 		animationRenderer.Initialize(renderDevice.get(), {
 			SHADER_DIR L"/AnimationDemo_VS.cso",
 			SHADER_DIR L"/AnimationDemo_PS.cso",
@@ -98,6 +125,7 @@ void Execute::OnDestroy()
 	VA_LOG("Execute", "Destroying Execute...");
 	app->OnDestroy();
 
+	Locator<TimerSystem>::Unregister();
 	Locator<InputSystem>::Unregister();
 	Locator<IPointerInput>::Unregister();
 
@@ -158,11 +186,15 @@ void Execute::OnUpdate()
 	pointerInput->Update();
 	inputSystem->Update();
 
+	timerSystem->Update(time->Delta());
 	app->OnUpdate(time->Delta());
 
 	// Frame Stats
 	float fps = 1.0f / time->Delta();
-	VA_DRAW_TEXT(std::format("FPS: {:.1f} ({:.2f} ms)", fps, time->Delta() * 1000.0f), { 10, 10 });
+	VA_DRAW_PANEL(0, std::format("FPS: {:.1f} ({:.2f} ms)", fps, time->Delta() * 1000.0f));
+
+	// Step 2 검증 결과 (Run() 한 번 실행, 매 프레임 panel에 재출력)
+	HelloCompute::RenderResult();
 }
 
 void Execute::OnPreRender()
@@ -183,7 +215,7 @@ void Execute::OnRender()
 	app->SubmitRenderState(&scene);
 	scene.SortCommands();
 
-	VA_DRAW_TEXT(std::format("Draw Calls: {}", scene.GetCommands().size()), { 10, 30 });
+	VA_DRAW_PANEL(1, std::format("Draw Calls: {}", scene.GetCommands().size()));
 
 	FrameOutput output{
 		.backBuffer     = backBuffer,
@@ -192,8 +224,9 @@ void Execute::OnRender()
 		.width          = 1280,
 		.height         = 720
 	};
-	renderer.AddPasses(renderGraph, output);
-	animationRenderer.AddPasses(renderGraph, output);
+	renderer.AddPasses(renderGraph, output, scene);
+	animationRenderer.AddPasses(renderGraph, output, scene);
+	renderer.AddDebugLinePasses(renderGraph, output);  // 모든 geometry 이후 — depth test 정확도 보장
 
 	renderGraph.Compile(renderDevice.get());
 	renderGraph.Execute(commandList.get(), scene);

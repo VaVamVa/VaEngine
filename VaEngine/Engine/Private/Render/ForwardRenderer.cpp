@@ -12,6 +12,8 @@
 
 #include "Mesh/IMesh.h"
 #include "RHI/Texture/ITexture.h"
+#include "RHI/IDepthBuffer.h"
+#include "Utilities/DebuggingHelper.h"
 
 #include <algorithm>
 #include <cstring>
@@ -48,6 +50,46 @@ struct LightsBufferData
 
 namespace {
 
+struct SkyPass : IRenderPass
+{
+    SkyPass(ForwardRenderer* renderer, const FrameOutput& output)
+        : renderer(renderer), output(output) {}
+
+    void OnCompile(RenderGraph& /*graph*/) override {}
+
+    void DeclareResources(std::vector<PassResourceDecl>& /*reads*/,
+                          std::vector<PassResourceDecl>& writes) const override
+    {
+        writes.push_back({ output.backBuffer, EResourceState::RenderTarget });
+    }
+
+    void Execute(ICommandList* cmdList, const RenderScene& scene) override
+    {
+        RenderPassDesc passDesc;
+        passDesc.renderTargetCount            = 1;
+        passDesc.renderTargets[0].view        = output.backBufferView;
+        passDesc.renderTargets[0].loadAction  = ELoadAction::Clear;
+        passDesc.renderTargets[0].storeAction = EStoreAction::Store;
+        std::memcpy(passDesc.renderTargets[0].clearColor, output.clearColor, sizeof(float) * 4);
+
+        cmdList->BeginRenderPass(passDesc);
+        cmdList->SetViewport(0.0f, 0.0f,
+                             static_cast<float>(output.width),
+                             static_cast<float>(output.height),
+                             0.0f, 1.0f);
+        cmdList->SetScissorRect(0, 0,
+                                static_cast<int32_t>(output.width),
+                                static_cast<int32_t>(output.height));
+
+        renderer->RenderSky(cmdList, scene);
+
+        cmdList->EndRenderPass();
+    }
+
+    ForwardRenderer* renderer;
+    FrameOutput      output;
+};
+
 struct ForwardPass : IRenderPass
 {
     ForwardPass(ForwardRenderer* renderer, const FrameOutput& output, uint32_t depthHandle)
@@ -70,13 +112,12 @@ struct ForwardPass : IRenderPass
         RenderPassDesc passDesc;
         passDesc.renderTargetCount            = 1;
         passDesc.renderTargets[0].view        = output.backBufferView;
-        passDesc.renderTargets[0].loadAction  = ELoadAction::Clear;
+        passDesc.renderTargets[0].loadAction  = ELoadAction::Load;   // SkyPass가 Clear 담당
         passDesc.renderTargets[0].storeAction = EStoreAction::Store;
-        std::memcpy(passDesc.renderTargets[0].clearColor, output.clearColor, sizeof(float) * 4);
 
         passDesc.depthStencil.view            = depthBuffer->GetView();
         passDesc.depthStencil.loadAction      = ELoadAction::Clear;
-        passDesc.depthStencil.storeAction     = EStoreAction::DontCare;
+        passDesc.depthStencil.storeAction     = EStoreAction::Store;   // DebugLinePass에서 depth test 재사용
         passDesc.depthStencil.clearColor[0]   = 1.0f;
 
         cmdList->BeginRenderPass(passDesc);
@@ -97,6 +138,94 @@ struct ForwardPass : IRenderPass
     FrameOutput      output;
     uint32_t         depthHandle;
     IDepthBuffer*    depthBuffer = nullptr;  // graph 소유, 비소유 포인터
+};
+
+struct DebugLinePass : IRenderPass
+{
+    DebugLinePass(ForwardRenderer* renderer, const FrameOutput& output, uint32_t depthHandle)
+        : renderer(renderer), output(output), depthHandle(depthHandle) {}
+
+    void OnCompile(RenderGraph& graph) override
+    {
+        depthBuffer = graph.GetTransientDepth(depthHandle);
+    }
+
+    void DeclareResources(std::vector<PassResourceDecl>& /*reads*/,
+                          std::vector<PassResourceDecl>& writes) const override
+    {
+        writes.push_back({ output.backBuffer,          EResourceState::RenderTarget });
+        writes.push_back({ depthBuffer->GetResource(), EResourceState::DepthWrite   });
+    }
+
+    void Execute(ICommandList* cmdList, const RenderScene& scene) override
+    {
+        RenderPassDesc passDesc;
+        passDesc.renderTargetCount            = 1;
+        passDesc.renderTargets[0].view        = output.backBufferView;
+        passDesc.renderTargets[0].loadAction  = ELoadAction::Load;
+        passDesc.renderTargets[0].storeAction = EStoreAction::Store;
+
+        passDesc.depthStencil.view        = depthBuffer->GetView();
+        passDesc.depthStencil.loadAction  = ELoadAction::Load;      // ForwardPass depth 유지
+        passDesc.depthStencil.storeAction = EStoreAction::DontCare;
+
+        cmdList->BeginRenderPass(passDesc);
+        cmdList->SetViewport(0.0f, 0.0f,
+                             static_cast<float>(output.width),
+                             static_cast<float>(output.height),
+                             0.0f, 1.0f);
+        cmdList->SetScissorRect(0, 0,
+                                static_cast<int32_t>(output.width),
+                                static_cast<int32_t>(output.height));
+
+        renderer->RenderDebugLines(cmdList, scene);
+
+        cmdList->EndRenderPass();
+    }
+
+    ForwardRenderer* renderer;
+    FrameOutput      output;
+    uint32_t         depthHandle;
+    IDepthBuffer*    depthBuffer = nullptr;
+};
+
+struct DebugTextPass : IRenderPass
+{
+    DebugTextPass(ForwardRenderer* renderer, const FrameOutput& output)
+        : renderer(renderer), output(output) {}
+
+    void OnCompile(RenderGraph& /*graph*/) override {}
+
+    void DeclareResources(std::vector<PassResourceDecl>& /*reads*/,
+                          std::vector<PassResourceDecl>& writes) const override
+    {
+        writes.push_back({ output.backBuffer, EResourceState::RenderTarget });
+    }
+
+    void Execute(ICommandList* cmdList, const RenderScene& scene) override
+    {
+        RenderPassDesc passDesc;
+        passDesc.renderTargetCount            = 1;
+        passDesc.renderTargets[0].view        = output.backBufferView;
+        passDesc.renderTargets[0].loadAction  = ELoadAction::Load;
+        passDesc.renderTargets[0].storeAction = EStoreAction::Store;
+
+        cmdList->BeginRenderPass(passDesc);
+        cmdList->SetViewport(0.0f, 0.0f,
+                             static_cast<float>(output.width),
+                             static_cast<float>(output.height),
+                             0.0f, 1.0f);
+        cmdList->SetScissorRect(0, 0,
+                                static_cast<int32_t>(output.width),
+                                static_cast<int32_t>(output.height));
+
+        renderer->RenderDebugText(cmdList, scene, output.width, output.height);
+
+        cmdList->EndRenderPass();
+    }
+
+    ForwardRenderer* renderer;
+    FrameOutput      output;
 };
 
 } // namespace
@@ -167,12 +296,79 @@ void ForwardRenderer::Initialize(IRenderDevice* device, const ShaderDesc& shader
     material = std::make_unique<Material>();
 }
 
-void ForwardRenderer::AddPasses(RenderGraph& graph, const FrameOutput& output)
+void ForwardRenderer::AddPasses(RenderGraph& graph, const FrameOutput& output, const RenderScene& /*scene*/)
 {
+    graph.AddPass<SkyPass>(this, output);  // 항상 먼저 — RT Clear + HDRi 렌더
+
     uint32_t depthHandle = graph.DeclareTransientDepth({
         output.width, output.height, EPixelFormat::D24_UNORM_S8_UINT
     });
     graph.AddPass<ForwardPass>(this, output, depthHandle);
+
+    if (debugTextRenderer)
+        graph.AddPass<DebugTextPass>(this, output);
+}
+
+void ForwardRenderer::InitializeSky(IRenderDevice* device, const ShaderDesc& skyShaderDesc)
+{
+    // 바인딩 레이아웃: b0(CB, Pixel) + t0(Texture, Pixel)
+    BindingEntry skyBindings[] = {
+        { EBindingType::ConstantBuffer, 0, EShaderStage::Pixel },
+        { EBindingType::Texture,        0, EShaderStage::Pixel },
+    };
+    skyBindingLayout = device->CreateBindingLayout(skyBindings, 2);
+
+    skyShader = device->CreateShader(skyShaderDesc);
+
+    // CullMode::None, depthEnable=false, vertexInput 없음
+    PipelineStateDesc skyPsoDesc = {
+        .shader           = skyShader.get(),
+        .vertexInputs     = nullptr,
+        .vertexInputCount = 0,
+        .rtvFormat        = EPixelFormat::R8G8B8A8_UNORM,
+        .dsvFormat        = EPixelFormat::Unknown,
+        .cullMode         = ECullMode::None,
+        .blendMode        = EBlendMode::Opaque,
+        .depthEnable      = false,
+        .bindingLayout    = skyBindingLayout.get()
+    };
+    skyPipelineState = device->CreatePipelineState(skyPsoDesc);
+
+    // CB_SkyData: InvProj(64) + InvViewRot(64) = 128 bytes
+    skyDataBuffer = device->CreateBuffer({
+        .size   = 128,
+        .usage  = EBufferUsage::ConstantBuffer,
+        .access = EMemoryAccess::Upload,
+        .stride = 0
+    });
+}
+
+void ForwardRenderer::RenderSky(ICommandList* cmdList, const RenderScene& scene)
+{
+    if (!skyPipelineState || !scene.GetSkybox())
+        return;
+
+    const CameraData& cam = scene.GetCamera();
+
+    // InvProj: Projection 역행렬
+    Matrix4x4 invProj = cam.proj.Inverse();
+
+    // InvViewRot: View translation 제거(row-major m[3][0..2]) 후 전치 (직교 → 역 = 전치)
+    Matrix4x4 viewRot  = cam.view;
+    viewRot.m[3][0] = 0.0f; viewRot.m[3][1] = 0.0f; viewRot.m[3][2] = 0.0f;
+    Matrix4x4 invViewRot = viewRot.Transposed();
+
+    struct SkyData { float invProj[16]; float invViewRot[16]; };
+    SkyData skyData;
+    std::memcpy(skyData.invProj,    invProj.m,    64);
+    std::memcpy(skyData.invViewRot, invViewRot.m, 64);
+    skyDataBuffer->Upload(&skyData, sizeof(skyData));
+
+    skyPipelineState->Bind(cmdList);
+    cmdList->SetConstantBuffer(skyDataBuffer.get(), 0);  // root param 0 → b0
+    scene.GetSkybox()->Bind(cmdList, 1);                  // root param 1 → t0
+    cmdList->SetPrimitiveTopology(EPrimitiveTopology::TriangleList);
+    cmdList->DrawInstanced(3, 1);
 }
 
 void ForwardRenderer::Render(ICommandList* cmdList, const RenderScene& scene)
@@ -257,4 +453,46 @@ void ForwardRenderer::Render(ICommandList* cmdList, const RenderScene& scene)
         mesh->DrawInstanced(cmdList, clampedCount);
         byteOffset += clampedCount * static_cast<uint32_t>(sizeof(Matrix4x4));
     }
+}
+
+void ForwardRenderer::AddDebugLinePasses(RenderGraph& graph, const FrameOutput& output)
+{
+    if (!debugLineRenderer) return;
+    // DeclareTransientDepth — 동일 desc면 기존 핸들 반환 (AnimationPass와 같은 depth buffer 공유)
+    uint32_t depthHandle = graph.DeclareTransientDepth({
+        output.width, output.height, EPixelFormat::D24_UNORM_S8_UINT
+    });
+    graph.AddPass<DebugLinePass>(this, output, depthHandle);
+}
+
+void ForwardRenderer::InitializeDebugLines(IRenderDevice* device, const ShaderDesc& lineShaderDesc)
+{
+    renderDevice = device;
+    debugLineRenderer = std::make_unique<DebugLineRenderer>();
+    debugLineRenderer->Initialize(device, lineShaderDesc);
+}
+
+void ForwardRenderer::RenderDebugLines(ICommandList* cmdList, const RenderScene& scene)
+{
+    if (!debugLineRenderer) return;
+    const CameraData& cam = scene.GetCamera();
+    const Matrix4x4 vp = cam.view * cam.proj;
+    debugLineRenderer->Render(cmdList, DebuggingHelper::GetLineEntries(), vp);
+}
+
+void ForwardRenderer::InitializeDebugText(IRenderDevice* device, const ShaderDesc& glyphShaderDesc, const char* ttfPath)
+{
+    renderDevice = device;
+    debugTextRenderer = std::make_unique<DebugTextRenderer>();
+    debugTextRenderer->Initialize(device, glyphShaderDesc, ttfPath);
+}
+
+void ForwardRenderer::RenderDebugText(ICommandList* cmdList, const RenderScene& /*scene*/,
+                                      uint32_t screenW, uint32_t screenH)
+{
+    if (!debugTextRenderer) return;
+    debugTextRenderer->Render(cmdList, renderDevice,
+                              DebuggingHelper::GetTextEntries(),
+                              DebuggingHelper::GetPanelEntries(),
+                              screenW, screenH);
 }

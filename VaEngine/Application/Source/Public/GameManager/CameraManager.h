@@ -13,6 +13,9 @@ public:
 	void SubmitRenderState(RenderScene* scene) override;
 	void OnDestroy() override;
 
+	Matrix4x4 GetView()       const;
+	Matrix4x4 GetProjection() const;
+
 private:
 	std::unique_ptr<FreeCamera> camera;
 };

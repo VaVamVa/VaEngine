@@ -144,6 +144,7 @@ struct Matrix4x4
     Matrix4x4& operator*=(const Matrix4x4& o) { *this = *this * o; return *this; }
 
     Matrix4x4 Transposed() const;
+    Matrix4x4 Inverse() const;
 
     // TRS 분해 — Shepperd 방법 (row-major)
     struct Decomposed { Vector3 translation; Quaternion rotation; Vector3 scale; };

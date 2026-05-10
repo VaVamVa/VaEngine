@@ -13,12 +13,7 @@ cbuffer CB_PerFrame : register(b0)
     float    _perFramePad;
 };
 
-// Per-object constants (b1)
-cbuffer CB_World : register(b1)
-{
-    float4x4 gWorld;
-    float4x4 gWorldInvTranspose;
-};
+// NOTE: 월드 행렬은 인스턴스 버퍼(slot 1)에서 직접 읽음. 별도 b1 cbuffer 사용 안 함.
 
 // --- Vertex input layouts ---
 

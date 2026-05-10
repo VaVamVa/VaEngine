@@ -49,7 +49,7 @@ target_include_directories(Application
 target_link_libraries(Application PUBLIC Engine)
 
 target_compile_definitions(Application PRIVATE
-    ASSETS_DIR="${CMAKE_SOURCE_DIR}/_Assets"
+    ASSETS_DIR="${CMAKE_SOURCE_DIR}/_Assets/"
 )
 
 target_precompile_headers(Application PRIVATE pch.h)

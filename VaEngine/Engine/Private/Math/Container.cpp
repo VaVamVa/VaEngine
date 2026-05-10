@@ -278,6 +278,42 @@ Matrix4x4 Matrix4x4::PerspectiveFovRH(float fovY, float aspect, float nearZ, flo
     return r;
 }
 
+Matrix4x4 Matrix4x4::Inverse() const
+{
+    // Gauss-Jordan 소거법 (부분 피벗)
+    float a[4][8];
+    for (int i = 0; i < 4; ++i)
+    {
+        for (int j = 0; j < 4; ++j) a[i][j]     = m[i][j];
+        for (int j = 0; j < 4; ++j) a[i][j + 4] = (i == j) ? 1.0f : 0.0f;
+    }
+    for (int col = 0; col < 4; ++col)
+    {
+        int pivot = col;
+        for (int row = col + 1; row < 4; ++row)
+            if (std::fabs(a[row][col]) > std::fabs(a[pivot][col]))
+                pivot = row;
+        if (pivot != col)
+            for (int j = 0; j < 8; ++j)
+                std::swap(a[col][j], a[pivot][j]);
+        float inv = 1.0f / a[col][col];
+        for (int j = 0; j < 8; ++j)
+            a[col][j] *= inv;
+        for (int row = 0; row < 4; ++row)
+        {
+            if (row == col) continue;
+            float factor = a[row][col];
+            for (int j = 0; j < 8; ++j)
+                a[row][j] -= factor * a[col][j];
+        }
+    }
+    Matrix4x4 r;
+    for (int i = 0; i < 4; ++i)
+        for (int j = 0; j < 4; ++j)
+            r.m[i][j] = a[i][j + 4];
+    return r;
+}
+
 Matrix4x4 Matrix4x4::Lerp(const Matrix4x4& a, const Matrix4x4& b, float t)
 {
     Matrix4x4 r;

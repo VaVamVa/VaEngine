@@ -47,11 +47,17 @@ public:
 	// 상수 버퍼 바인딩 (DX12: SetGraphicsRootConstantBufferView, Vulkan: descriptor set bind)
 	virtual void SetConstantBuffer(IBuffer* cb, uint32_t slot) = 0;
 
+	// Graphics root SRV 바인딩 — StructuredBuffer / ByteAddressBuffer 등 (DX12: SetGraphicsRootShaderResourceView)
+	virtual void SetGraphicsSRV(class IResourceView* view, uint32_t slot) = 0;
+
 	// 인덱스 드로우 (instanceCount = 1 고정)
 	virtual void DrawIndexed(uint32_t indexCount, uint32_t startIndex = 0, int32_t baseVertex = 0) = 0;
 
 	// 인스턴스 드로우
 	virtual void DrawIndexedInstanced(uint32_t indexCount, uint32_t instanceCount, uint32_t startIndex = 0, int32_t baseVertex = 0, uint32_t startInstance = 0) = 0;
+
+	// 버텍스 버퍼 없는 드로우 (SV_VertexID 기반 메시리스 렌더링용)
+	virtual void DrawInstanced(uint32_t vertexCount, uint32_t instanceCount) = 0;
 
 	// 프리미티브 토폴로지 설정 (DX12: IASetPrimitiveTopology, Vulkan: vkCmdSetPrimitiveTopologyEXT)
 	virtual void SetPrimitiveTopology(EPrimitiveTopology topology) = 0;
@@ -62,7 +68,26 @@ public:
 	// 렌더 패스 종료 (DX12: no-op, Vulkan: vkCmdEndRenderPass)
 	virtual void EndRenderPass() = 0;
 
+	// Buffer-to-buffer 전체 복사 (DX12: CopyBufferRegion, Vulkan: vkCmdCopyBuffer)
+	// 호출 전 src는 CopySource, dst는 CopyDest 상태여야 함.
+	virtual void CopyBuffer(IBuffer* dst, IBuffer* src, uint64_t bytes) = 0;
+
 #pragma endregion
 
+#pragma region Compute Commands
+	// Compute root에 CBV 바인딩 (graphics용 SetConstantBuffer와 별도 — DX12 root signature가 분리됨)
+	virtual void SetComputeConstantBuffer(IBuffer* cb, uint32_t slot) = 0;
 
+	// Compute root에 buffer SRV 바인딩 (StructuredBuffer / ByteAddressBuffer 입력)
+	virtual void SetComputeSRV(IResourceView* view, uint32_t slot) = 0;
+
+	// Compute root에 buffer UAV 바인딩 (RWStructuredBuffer / RWByteAddressBuffer 출력)
+	virtual void SetComputeUAV(IResourceView* view, uint32_t slot) = 0;
+
+	// 디스패치 — (X*Y*Z) * (groupCount.x * y * z) 만큼의 thread를 GPU에 풀어놓음
+	virtual void Dispatch(uint32_t groupCountX, uint32_t groupCountY, uint32_t groupCountZ) = 0;
+
+	// UAV 동기화 — compute 쓰기 → 후속 패스 읽기 사이에 삽입
+	virtual void UAVBarrier(IRHIResource* resource) = 0;
+#pragma endregion
 };

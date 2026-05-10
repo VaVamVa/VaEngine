@@ -3,6 +3,7 @@
 #include "Asset/MeshLoader.h"
 #include "RHI/IRenderDevice.h"
 #include "RHI/Texture/ITexture.h"
+#include "Scene/RenderScene.h"
 
 #include <filesystem>
 #include <fstream>
@@ -39,9 +40,15 @@ void WorldModel::Initialize(IRenderDevice* device,
     if (texName.empty())
         return;
 
-    const std::wstring wpath =
-        (std::filesystem::path(matlPath).parent_path() / texName).wstring();
+    const std::string spath =
+        (std::filesystem::path(matlPath).parent_path() / texName).string();
 
     texture = device->CreateTexture();
-    texture->LoadFromFile(device, wpath.c_str());
+    texture->LoadFromFile(device, spath.c_str());
+}
+
+void WorldModel::Impl_AddToScene(RenderScene& scene) const
+{
+    for (const auto& mesh : meshes)
+        scene.AddMesh(mesh.get(), transform.GetMatrix(), texture.get());
 }

@@ -18,10 +18,12 @@ enum class EShaderStage : uint32_t
 // 바인딩 리소스 유형
 enum class EBindingType : uint32_t
 {
-	ConstantBuffer	= 0,	// CBV (b 레지스터)
-	Texture			= 1,	// SRV (t 레지스터)
+	ConstantBuffer	= 0,	// CBV (b 레지스터) — root CBV
+	Texture			= 1,	// SRV via descriptor table (t 레지스터) — Texture2D / Texture2DArray 등
 	Sampler			= 2,	// Sampler (s 레지스터)
-	UAV				= 3,	// UAV (u 레지스터)
+	UAV				= 3,	// UAV via root descriptor (u 레지스터) — Buffer/RWByteAddressBuffer/RWStructuredBuffer
+	TextureUAV		= 4,	// UAV via descriptor table (u 레지스터) — RWTexture / RWTexture2DArray
+	BufferSRV		= 5,	// SRV via root descriptor (t 레지스터) — StructuredBuffer / ByteAddressBuffer (compute 입력)
 };
 
 // 컬링 방향
@@ -38,6 +40,14 @@ enum class EBlendMode : uint32_t
 	Opaque		= 0,
 	AlphaBlend	= 1,
 	Additive	= 2,
+};
+
+// 프리미티브 토폴로지 타입 (PSO 생성 시 지정)
+enum class EPrimitiveTopologyType : uint32_t
+{
+	Triangle = 0,
+	Line     = 1,
+	Point    = 2,
 };
 
 // 바인딩 레이아웃 엔트리 (Root Signature / Pipeline Layout 한 슬롯)
@@ -70,9 +80,10 @@ struct PipelineStateDesc
 	EPixelFormat           rtvFormat;
 	EPixelFormat           dsvFormat  = EPixelFormat::Unknown;
 
-	ECullMode              cullMode   = ECullMode::Back;
-	EBlendMode             blendMode  = EBlendMode::Opaque;
-	bool                   depthEnable = false;
+	ECullMode              cullMode      = ECullMode::Back;
+	EBlendMode             blendMode     = EBlendMode::Opaque;
+	bool                   depthEnable   = false;
+	EPrimitiveTopologyType topologyType  = EPrimitiveTopologyType::Triangle;
 
 	IBindingLayout*        bindingLayout = nullptr;
 };

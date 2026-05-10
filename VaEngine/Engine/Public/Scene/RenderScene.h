@@ -139,20 +139,25 @@ public:
 
 	void SetLighting(const LightingState& lighting) { lightingState = lighting; }
 
+	void SetSkybox(ITexture* tex) { skyTexture = tex; }
+
 	void Clear()
 	{
 		commands.clear();
 		skinnedCommands.clear();
+		skyTexture = nullptr;
 	}
 
 	const CameraData&                        GetCamera()          const { return camera; }
 	const std::vector<RenderCommand>&        GetCommands()        const { return commands; }
 	const std::vector<SkinnedRenderCommand>& GetSkinnedCommands() const { return skinnedCommands; }
 	const LightingState&                     GetLighting()        const { return lightingState; }
+	ITexture*                                GetSkybox()          const { return skyTexture; }
 
 private:
 	CameraData                        camera;
 	LightingState                     lightingState;
 	std::vector<RenderCommand>        commands;
 	std::vector<SkinnedRenderCommand> skinnedCommands;
+	ITexture*                         skyTexture = nullptr;
 };

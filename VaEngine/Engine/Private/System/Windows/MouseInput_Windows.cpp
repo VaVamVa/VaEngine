@@ -42,7 +42,9 @@ void MouseInput_Windows::Update()
 		GetCursorPos(&pt);
 
 		if (firstUpdate)
+		{
 			firstUpdate = false;
+		}
 		else
 		{
 			state.deltaX = static_cast<float>(pt.x - center.x);
@@ -57,11 +59,14 @@ void MouseInput_Windows::Update()
 	{
 		POINT pt;
 		GetCursorPos(&pt);
+		ScreenToClient(hwnd, &pt);
 		float newX = static_cast<float>(pt.x);
 		float newY = static_cast<float>(pt.y);
 
 		if (firstUpdate)
+		{
 			firstUpdate = false;
+		}
 		else
 		{
 			state.deltaX = newX - state.x;

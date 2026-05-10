@@ -9,6 +9,7 @@
 
 class IRenderDevice;
 class ITexture;
+class RenderScene;
 
 // 하나 이상의 서브메시 + diffuse 텍스처를 소유하는 WorldObject.
 // meshPath  : .mesh 바이너리 파일 경로
@@ -24,6 +25,8 @@ public:
     ITexture*                                          GetTexture() const { return texture.get(); }
 
 protected:
+    void Impl_AddToScene(RenderScene& scene) const override;
+
     std::vector<std::unique_ptr<MeshPrimitive>> meshes;
     std::unique_ptr<ITexture>                   texture;
 };

@@ -2,7 +2,7 @@
 
 void WO_Kachujin::Initialize(IRenderDevice* device)
 {
-    const std::string dir = std::string(ASSETS_DIR) + "/Kachujin/";
+    const std::string dir = std::string(ASSETS_DIR) + "Kachujin/";
 
     // 클립 파일 목록 — ImportTool이 생성하는 stem_ClipName.clip 형식에 맞게 추가
     const std::vector<std::string> clipPaths = {

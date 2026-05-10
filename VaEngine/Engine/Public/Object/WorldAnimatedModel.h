@@ -25,14 +25,21 @@ public:
                     const std::string& texturePath = {});
 
     void Update(float deltaTime);
-    void AddToScene(RenderScene& scene) const;
 
     void Play     (uint32_t clipIndex, uint32_t instanceIndex = 0);
     void PlayTween(uint32_t nextClip, float blendTime, uint32_t instanceIndex = 0, float speed = 1.0f);
+    void PlayBlend(uint32_t clip0, uint32_t clip1, uint32_t clip2,
+                   float speed0 = 1.0f, float speed1 = 1.0f, float speed2 = 1.0f,
+                   uint32_t instanceIndex = 0);
+    void SetBlendAlpha(float alpha, uint32_t instanceIndex = 0);
     void Resize   (uint32_t instanceCount);
 
-    uint32_t GetClipCount() const { return clipCount; }
+    uint32_t           GetClipCount()              const { return clipCount; }
+    const std::string& GetClipName(uint32_t index) const { return clips[index].name; }
 
+
+protected:
+    void Impl_AddToScene(RenderScene& scene) const override;
 
 private:
     void BakeTransformsMap(IRenderDevice* device);

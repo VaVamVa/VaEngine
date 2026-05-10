@@ -2,8 +2,16 @@
 
 #include "RHI/IRHIResource.h"
 
-ResourceView_DirectX::ResourceView_DirectX(const ResourceViewDesc& inDesc, D3D12_CPU_DESCRIPTOR_HANDLE inRTVHandle, IRHIResource* inResource)
-	: desc(inDesc), resource(inResource), rtvHandle(inRTVHandle)
+ResourceView_DirectX::ResourceView_DirectX(const ResourceViewDesc& inDesc, D3D12_CPU_DESCRIPTOR_HANDLE inCpuHandle, IRHIResource* inResource)
+	: desc(inDesc), resource(inResource), cpuHandle(inCpuHandle)
+{
+}
+
+ResourceView_DirectX::ResourceView_DirectX(const ResourceViewDesc& inDesc,
+                                           D3D12_CPU_DESCRIPTOR_HANDLE inCpuHandle,
+                                           D3D12_GPU_DESCRIPTOR_HANDLE inGpuHandle,
+                                           IRHIResource* inResource)
+	: desc(inDesc), resource(inResource), cpuHandle(inCpuHandle), gpuHandle(inGpuHandle)
 {
 }
 

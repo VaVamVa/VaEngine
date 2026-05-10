@@ -176,6 +176,13 @@ void CommandList_DirectX::SetConstantBuffer(IBuffer* cb, uint32_t slot)
 	commandList->SetGraphicsRootConstantBufferView(slot, address);
 }
 
+void CommandList_DirectX::SetGraphicsSRV(IResourceView* view, uint32_t slot)
+{
+	auto* dxView = static_cast<ResourceView_DirectX*>(view);
+	auto* res    = static_cast<ID3D12Resource*>(dxView->GetResource()->GetNativeResource());
+	commandList->SetGraphicsRootShaderResourceView(slot, res->GetGPUVirtualAddress());
+}
+
 void CommandList_DirectX::DrawIndexed(uint32_t indexCount, uint32_t startIndex, int32_t baseVertex)
 {
 	commandList->DrawIndexedInstanced(indexCount, 1, startIndex, baseVertex, 0);
@@ -184,6 +191,11 @@ void CommandList_DirectX::DrawIndexed(uint32_t indexCount, uint32_t startIndex, 
 void CommandList_DirectX::DrawIndexedInstanced(uint32_t indexCount, uint32_t instanceCount, uint32_t startIndex, int32_t baseVertex, uint32_t startInstance)
 {
 	commandList->DrawIndexedInstanced(indexCount, instanceCount, startIndex, baseVertex, startInstance);
+}
+
+void CommandList_DirectX::DrawInstanced(uint32_t vertexCount, uint32_t instanceCount)
+{
+	commandList->DrawInstanced(vertexCount, instanceCount, 0, 0);
 }
 
 void CommandList_DirectX::SetPrimitiveTopology(EPrimitiveTopology topology)
@@ -235,5 +247,49 @@ void CommandList_DirectX::BeginRenderPass(const RenderPassDesc& desc)
 
 void CommandList_DirectX::EndRenderPass()
 {
+}
+
+void CommandList_DirectX::CopyBuffer(IBuffer* dst, IBuffer* src, uint64_t bytes)
+{
+	auto* dstRes = static_cast<ID3D12Resource*>(dst->GetNativeResource());
+	auto* srcRes = static_cast<ID3D12Resource*>(src->GetNativeResource());
+	commandList->CopyBufferRegion(dstRes, 0, srcRes, 0, bytes);
+}
+
+void CommandList_DirectX::SetComputeConstantBuffer(IBuffer* cb, uint32_t slot)
+{
+	D3D12_GPU_VIRTUAL_ADDRESS address =
+		static_cast<ID3D12Resource*>(cb->GetNativeResource())->GetGPUVirtualAddress();
+	commandList->SetComputeRootConstantBufferView(slot, address);
+}
+
+void CommandList_DirectX::SetComputeSRV(IResourceView* view, uint32_t slot)
+{
+	auto* dxView = static_cast<ResourceView_DirectX*>(view);
+	auto* res    = static_cast<ID3D12Resource*>(dxView->GetResource()->GetNativeResource());
+	// Buffer SRV는 root SRV로 바인딩 (raw/structured 모두 GPU virtual address 사용)
+	commandList->SetComputeRootShaderResourceView(slot, res->GetGPUVirtualAddress());
+}
+
+void CommandList_DirectX::SetComputeUAV(IResourceView* view, uint32_t slot)
+{
+	auto* dxView = static_cast<ResourceView_DirectX*>(view);
+	auto* res    = static_cast<ID3D12Resource*>(dxView->GetResource()->GetNativeResource());
+	// Buffer UAV는 root UAV로 바인딩
+	commandList->SetComputeRootUnorderedAccessView(slot, res->GetGPUVirtualAddress());
+}
+
+void CommandList_DirectX::Dispatch(uint32_t groupCountX, uint32_t groupCountY, uint32_t groupCountZ)
+{
+	commandList->Dispatch(groupCountX, groupCountY, groupCountZ);
+}
+
+void CommandList_DirectX::UAVBarrier(IRHIResource* resource)
+{
+	D3D12_RESOURCE_BARRIER barrier = {};
+	barrier.Type          = D3D12_RESOURCE_BARRIER_TYPE_UAV;
+	barrier.Flags         = D3D12_RESOURCE_BARRIER_FLAG_NONE;
+	barrier.UAV.pResource = static_cast<ID3D12Resource*>(resource->GetNativeResource());
+	commandList->ResourceBarrier(1, &barrier);
 }
 

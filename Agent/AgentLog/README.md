@@ -1,6 +1,6 @@
 # VaEngine — 프로젝트 현황판
 
-> 마지막 업데이트: 2026-05-09
+> 마지막 업데이트: 2026-05-10 (세션 2)
 >
 > **[공지] 이 문서는 현황판입니다. ToDo 항목은 각 날짜의 Log 파일에만 기록합니다.**
 
@@ -13,7 +13,7 @@ DirectX12 + Vulkan 크로스 플랫폼 3D 렌더링 엔진.
 
 ---
 
-## 핵심 아키텍처 (2026-05-09 기준)
+## 핵심 아키텍처 (2026-05-10 기준)
 
 ### Execute (Engine 소유) + ApplicationManager (Application 소유)
 
@@ -59,8 +59,8 @@ VaEngine/
 ├── CMakePresets.json               ← windows-directx / asset-importer / engine 프리셋
 ├── Engine/
 │   ├── _Shaders/
-│   │   ├── Common/                 ← Lighting.hlsli 등 공유 헤더
-│   │   └── DirectX/               ← CubeShader.hlsl, AnimationDemo.hlsl
+│   │   ├── Common/                 ← Lighting.hlsli, Sampler.hlsli 등 공유 헤더
+│   │   └── DirectX/               ← CubeShader.hlsl, AnimationDemo.hlsl, Sky.hlsl
 │   ├── Public/
 │   │   ├── Animation/              ← AnimClip.h, AnimController.h
 │   │   ├── Asset/                  ← MeshAsset.h, SkmAsset.h, ClipAsset.h, *Loader.h
@@ -86,7 +86,7 @@ VaEngine/
 │       │       ├── Buffer/         ← Buffer_DirectX, DepthBuffer_DirectX
 │       │       ├── Pipeline/       ← PipelineState_DirectX
 │       │       ├── Shader/
-│       │       └── Texture/        ← Texture_DirectX, Texture2DArray_DX
+│       │       └── Texture/        ← Texture_DirectX, TextureFloat_DirectX, Texture2DArray_DX
 │       ├── Render/                 ← ForwardRenderer, AnimationRenderer, RenderGraph
 │       ├── Scene/
 │       ├── System/
@@ -143,6 +143,15 @@ VaEngine/
 - **GPU 업로드**: `BakeTransformsMap` — 이름 기반 본 매핑, `Texture2DArray` [clipIdx][frameIdx][boneIdx × 4]
 - **Global SRV Heap**: `RenderDevice_DirectX` 단일 SRV Heap (1024 slots) — 다중 텍스처 바인딩 안정화
 - **Tween Transition**: `AnimController::PlayTween()` — inter-clip lerp, HLSL `lerp(currentSkinMat, nextSkinMat, TweenTime)`
+- **Bone Palette GPU 오프로드**: `BonePaletteCompute.hlsl` — Dispatch(1, instanceCount, 1), `[numthreads(250, 1, 1)]`. `SkinnedMesh`가 buffer/UAV/SRV 소유 (다종 mesh 자동 분리)
+- **3-clip Blend**: `EAnimBlendMode::Blend` — `PlayBlend(clip0, clip1, clip2)` + `SetBlendAlpha(alpha [0,2])`. CSMain에서 alpha≤1→clip0↔1, alpha>1→clip1↔2 가중 합성
+
+### 7. Meshless HDRi Sky Rendering
+- **Full-screen Triangle**: SV_VertexID (0,1,2) → NDC 삼각형 생성. VB/IB 없이 `DrawInstanced(3, 1)` 한 번으로 화면 전체 커버
+- **LatLong UV 매핑**: InvProj + InvViewRot(View 회전 역행렬)를 CB로 전달, PS에서 월드 방향 → θ/φ → UV 변환
+- **TextureFloat_DirectX**: `ITexture` 구현체, `DXGI_FORMAT_R32G32B32A32_FLOAT`, `stbi_loadf()` 사용 (`.hdr` 파일 지원)
+- **SkyPass 상시 등록**: SkyPass(ELoadAction::Clear) → ForwardPass(ELoadAction::Load) 순서로 고정
+- **에셋 경로**: `ASSETS_DIR "HDR/filename.hdr"` — `ASSETS_DIR`은 `"${CMAKE_SOURCE_DIR}/_Assets/"` (후행 슬래시 포함)
 
 ---
 
@@ -167,8 +176,12 @@ VaEngine/
 | [2026-05-08_Refactoring_Log.md](2026-05-08_Refactoring_Log.md) | 대규모 리팩터링: Execute Engine 이동, ApplicationManager 도입, RenderGraph/RenderScene 스냅샷, IBuffer/IShader 통합, 오프라인 셰이더 컴파일러 구축 |
 | [2026-05-08_Log.md](2026-05-08_Log.md) | Depth Buffer, Phong 조명(IMaterial+ILight), Draw Instanced, Transform 컴포넌트, LightManager, WorldObject, IActivate, VaImportTool, 텍스처 파이프라인, WO_Tower |
 | [2026-05-09_Log.md](2026-05-09_Log.md) | 스켈레탈 애니메이션 전체 구현, ImportTool 버그 수정 3종, .clip v2 bone 이름 매핑, Global SRV Heap, Tween Transition |
+| [2026-05-10_Q&A.md](2026-05-10_Q&A.md) | 외부 HDR Asset 적용 방법, LoadFromFile 인터페이스 개선 |
+| [2026-05-10_Log.md](2026-05-10_Log.md) | Meshless Sky 런타임 검증, LoadFromFile narrow 전환, ASSETS_DIR 정비, Debug Text Panel 시스템, Pick Ray, Compute 인프라 + BonePalette GPU 오프로드, 3-clip BlendBones |
 | [Plan/Plan_Animation.md](Plan/Plan_Animation.md) | 스켈레탈 애니메이션 구현 계획 (Steps 1~11 완료) |
 | [Plan/AssetImporter.md](Plan/AssetImporter.md) | VaImportTool + 텍스처 파이프라인 구현 계획 |
+| [Plan/Meshless_Sky_Rendering.md](Plan/Meshless_Sky_Rendering.md) | Meshless HDRi Sky Rendering 구현 계획 (Steps 1~9 완료) |
+| [Plan/DebugTextRendering.md](Plan/DebugTextRendering.md) | Debug Text Rendering 구현 계획 (stb_truetype + Glyph Atlas, Steps 1~9) |
 
 ---
 

@@ -50,3 +50,6 @@ void CameraManager::OnDestroy()
 {
 	camera.reset();
 }
+
+Matrix4x4 CameraManager::GetView()       const { return camera->GetView(); }
+Matrix4x4 CameraManager::GetProjection() const { return camera->GetProjection(); }

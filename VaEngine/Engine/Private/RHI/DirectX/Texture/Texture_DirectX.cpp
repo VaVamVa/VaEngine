@@ -8,13 +8,10 @@
 
 #include <stdexcept>
 
-void Texture_DirectX::LoadFromFile(IRenderDevice* device, const wchar_t* path)
+void Texture_DirectX::LoadFromFile(IRenderDevice* device, const char* path)
 {
-	char narrowPath[512];
-	WideCharToMultiByte(CP_UTF8, 0, path, -1, narrowPath, sizeof(narrowPath), nullptr, nullptr);
-
 	int width, height, channels;
-	stbi_uc* pixels = stbi_load(narrowPath, &width, &height, &channels, STBI_rgb_alpha);
+	stbi_uc* pixels = stbi_load(path, &width, &height, &channels, STBI_rgb_alpha);
 	if (!pixels)
 		throw std::runtime_error("Failed to load texture file");
 
@@ -120,10 +117,13 @@ void Texture_DirectX::Upload(RenderDevice_DirectX* rdDevice, const void* pixels,
 	device->CreateShaderResourceView(textureResource.Get(), &srvDesc, srv.cpu);
 }
 
-void Texture_DirectX::Bind(ICommandList* cmdList, uint32_t slot)
+void Texture_DirectX::Bind(ICommandList* cmdList, uint32_t slot, bool isCompute)
 {
 	auto* d3dCmd = static_cast<CommandList_DirectX*>(cmdList)->GetHandle();
 	ID3D12DescriptorHeap* heaps[] = { globalSrvHeap };
 	d3dCmd->SetDescriptorHeaps(1, heaps);
-	d3dCmd->SetGraphicsRootDescriptorTable(slot, srvGpuHandle);
+	if (isCompute)
+		d3dCmd->SetComputeRootDescriptorTable(slot, srvGpuHandle);
+	else
+		d3dCmd->SetGraphicsRootDescriptorTable(slot, srvGpuHandle);
 }

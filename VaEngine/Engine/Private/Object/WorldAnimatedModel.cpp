@@ -14,6 +14,7 @@
 #include "Math/Container.h"
 
 #include <algorithm>
+#include <filesystem>
 #include <unordered_map>
 #include <vector>
 #include <string>
@@ -27,10 +28,13 @@ void WorldAnimatedModel::Initialize(IRenderDevice* device,
     SkmLoadResult result = SkmLoader::Load(skmPath);
     skeleton = std::make_unique<Skeleton>(std::move(result.skeleton));
 
+    constexpr uint32_t kDefaultMaxInstances = 64;
     for (auto& meshData : result.meshes)
     {
         auto mesh = std::make_unique<SkinnedMesh>();
         mesh->Initialize(device, meshData);
+        // 본 팔레트 — 같은 mesh를 공유하는 모든 인스턴스가 이 buffer에 영역 분할 사용
+        mesh->CreateBonePalette(device, kDefaultMaxInstances);
         meshes.push_back(std::move(mesh));
     }
 
@@ -38,6 +42,7 @@ void WorldAnimatedModel::Initialize(IRenderDevice* device,
     for (const auto& path : clipPaths)
     {
         AnimClipData clip = ClipLoader::Load(path);
+        clip.name = std::filesystem::path(path).stem().string();
         if (clip.frameCount > 0)
             clips.push_back(std::move(clip));
         ++clipCount;
@@ -47,8 +52,7 @@ void WorldAnimatedModel::Initialize(IRenderDevice* device,
     if (!texturePath.empty())
     {
         texture = device->CreateTexture();
-        std::wstring wpath(texturePath.begin(), texturePath.end());
-        texture->LoadFromFile(device, wpath.c_str());
+        texture->LoadFromFile(device, texturePath.c_str());
     }
 
     // 본 변환 행렬을 Texture2DArray에 굽기
@@ -158,7 +162,7 @@ void WorldAnimatedModel::Update(float deltaTime)
         tweenBuffer->Upload(frames.data(), frames.size() * sizeof(TweenFrameDesc));
 }
 
-void WorldAnimatedModel::AddToScene(RenderScene& scene) const
+void WorldAnimatedModel::Impl_AddToScene(RenderScene& scene) const
 {
     const Matrix4x4 world = transform.GetMatrix();
     const uint32_t  count = animController.InstanceCount();
@@ -184,6 +188,18 @@ void WorldAnimatedModel::Play(uint32_t clipIndex, uint32_t instanceIndex)
 void WorldAnimatedModel::PlayTween(uint32_t nextClip, float blendTime, uint32_t instanceIndex, float speed)
 {
     animController.PlayTween(instanceIndex, nextClip, blendTime, speed);
+}
+
+void WorldAnimatedModel::PlayBlend(uint32_t clip0, uint32_t clip1, uint32_t clip2,
+                                    float speed0, float speed1, float speed2,
+                                    uint32_t instanceIndex)
+{
+    animController.PlayBlend(instanceIndex, clip0, clip1, clip2, speed0, speed1, speed2);
+}
+
+void WorldAnimatedModel::SetBlendAlpha(float alpha, uint32_t instanceIndex)
+{
+    animController.SetBlendAlpha(instanceIndex, alpha);
 }
 
 void WorldAnimatedModel::Resize(uint32_t instanceCount)

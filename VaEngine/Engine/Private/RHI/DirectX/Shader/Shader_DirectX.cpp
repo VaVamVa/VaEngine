@@ -15,6 +15,16 @@ void Shader_DirectX::Load(const ShaderDesc& desc)
 		std::memcpy(blob->GetBufferPointer(), data.data(), data.size());
 	};
 
+	// csPath가 채워져 있으면 compute 셰이더로 간주, 그 외에는 graphics (vs+ps) 셰이더로 로드
+	if (desc.csPath != nullptr)
+	{
+		loadBlob(desc.csPath, cs);
+		return;
+	}
+
+	if (desc.vsPath == nullptr || desc.psPath == nullptr)
+		throw std::runtime_error("ShaderDesc: graphics shader requires both vsPath and psPath");
+
 	loadBlob(desc.vsPath, vs);
 	loadBlob(desc.psPath, ps);
 }

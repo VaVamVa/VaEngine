@@ -1,3 +1,6 @@
+//Deprecated: This shader is no longer used. It was replaced by a more efficient implementation that uses a single draw call for all characters, reducing CPU overhead and improving performance.
+// Glyph rendering is now handled in a more optimized way, allowing for better batching and less state changes, which significantly enhances the rendering performance of debug text in the engine.
+
 #include "../Common/Global.hlsli"
 
 struct VS_INPUT

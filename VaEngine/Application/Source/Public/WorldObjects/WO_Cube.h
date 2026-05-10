@@ -6,13 +6,15 @@
 #include <memory>
 
 class IRenderDevice;
+class RenderScene;
 
 class WO_Cube : public WorldObject
 {
 public:
     void Initialize(IRenderDevice* device);
 
-    MeshPrimitive* GetMesh() const { return mesh.get(); }
+protected:
+    void Impl_AddToScene(RenderScene& scene) const override;
 
 private:
     std::unique_ptr<MeshPrimitive> mesh;

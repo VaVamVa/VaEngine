@@ -21,5 +21,6 @@ public:
                         uint32_t       height,
                         uint32_t       arraySize) = 0;
 
-    virtual void Bind(ICommandList* cmdList, uint32_t slot) = 0;
+    // isCompute=true 시 SetComputeRootDescriptorTable, 기본은 graphics
+    virtual void Bind(ICommandList* cmdList, uint32_t slot, bool isCompute = false) = 0;
 };

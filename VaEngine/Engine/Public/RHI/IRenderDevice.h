@@ -12,9 +12,12 @@
 #include "RHI/Shader/IShader.h"
 #include "RHI/Pipeline/IBindingLayout.h"
 #include "RHI/Pipeline/IPipelineState.h"
+#include "RHI/Pipeline/ComputePipelineDesc.h"
 #include "RHI/Texture/ITexture.h"
 #include "RHI/Texture/ITexture2DArray.h"
+#include "RHI/Texture/ITextureUAV.h"
 #include "RHI/IDepthBuffer.h"
+#include "RHI/IResourceView.h"
 
 /*
 RenderDevice는 그래픽 API와 상호 작용하는 핵심 클래스입니다.
@@ -35,10 +38,17 @@ public:
 	[[nodiscard]] virtual std::unique_ptr<ICommandList>		CreateCommandList(const CommandListDesc& desc) = 0;
 	[[nodiscard]] virtual std::unique_ptr<IBuffer>           CreateBuffer(const BufferDesc& desc) = 0;
 	[[nodiscard]] virtual std::unique_ptr<IShader>           CreateShader(const ShaderDesc& desc) = 0;
-	[[nodiscard]] virtual std::unique_ptr<IBindingLayout>    CreateBindingLayout(const BindingEntry* entries, uint32_t count) = 0;
-	[[nodiscard]] virtual std::unique_ptr<IPipelineState>		CreatePipelineState(const PipelineStateDesc& desc) = 0;
-	[[nodiscard]] virtual std::unique_ptr<ITexture>        CreateTexture() = 0;
-	[[nodiscard]] virtual std::unique_ptr<ITexture2DArray> CreateTexture2DArray() = 0;
-	[[nodiscard]] virtual std::unique_ptr<IDepthBuffer>    CreateDepthBuffer(uint32_t width, uint32_t height, EPixelFormat format) = 0;
+	[[nodiscard]] virtual std::unique_ptr<IBindingLayout>    CreateBindingLayout(const BindingEntry* entries, uint32_t count, bool isCompute = false) = 0;
+	[[nodiscard]] virtual std::unique_ptr<IPipelineState>    CreatePipelineState(const PipelineStateDesc& desc) = 0;
+	[[nodiscard]] virtual std::unique_ptr<IPipelineState>    CreateComputePipelineState(const ComputePipelineStateDesc& desc) = 0;
+	[[nodiscard]] virtual std::unique_ptr<ITexture>          CreateTexture() = 0;
+	[[nodiscard]] virtual std::unique_ptr<ITexture>          CreateTextureFloat() = 0;
+	[[nodiscard]] virtual std::unique_ptr<ITexture2DArray>   CreateTexture2DArray() = 0;
+	[[nodiscard]] virtual std::unique_ptr<ITextureUAV>       CreateTextureUAV() = 0;
+	[[nodiscard]] virtual std::unique_ptr<IDepthBuffer>      CreateDepthBuffer(uint32_t width, uint32_t height, EPixelFormat format) = 0;
 
+	// Compute / structured-buffer 리소스 뷰 생성
+	// strideBytes == 0 이면 raw byte buffer (ByteAddressBuffer / RWByteAddressBuffer), > 0 이면 structured buffer.
+	[[nodiscard]] virtual std::unique_ptr<IResourceView>     CreateBufferSRV(IBuffer* buffer, uint32_t numElements, uint32_t strideBytes) = 0;
+	[[nodiscard]] virtual std::unique_ptr<IResourceView>     CreateBufferUAV(IBuffer* buffer, uint32_t numElements, uint32_t strideBytes) = 0;
 };

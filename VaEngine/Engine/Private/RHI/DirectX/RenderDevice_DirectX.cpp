@@ -9,9 +9,13 @@
 #include "RHI/DirectX/Pipeline/BindingLayout_DirectX.h"
 #include "RHI/DirectX/Pipeline/PipelineState_DirectX.h"
 #include "RHI/DirectX/Texture/Texture_DirectX.h"
+#include "RHI/DirectX/Texture/TextureFloat_DirectX.h"
 #include "RHI/DirectX/Texture/Texture2DArray_DX.h"
+#include "RHI/DirectX/Texture/TextureUAV_DirectX.h"
 #include "RHI/DirectX/Shader/Shader_DirectX.h"
 #include "RHI/DirectX/DepthBuffer_DirectX.h"
+#include "RHI/DirectX/ResourceView_DirectX.h"
+#include "RHI/IRHIResource.h"
 #include "Utilities/DebuggingHelper.h"
 #include <format>
 
@@ -87,11 +91,11 @@ std::unique_ptr<IBuffer> RenderDevice_DirectX::CreateBuffer(const BufferDesc& de
 	return buffer;
 }
 
-std::unique_ptr<IBindingLayout> RenderDevice_DirectX::CreateBindingLayout(const BindingEntry* entries, uint32_t count)
+std::unique_ptr<IBindingLayout> RenderDevice_DirectX::CreateBindingLayout(const BindingEntry* entries, uint32_t count, bool isCompute)
 {
-	VA_LOG("RHI", std::format("CreateBindingLayout: Count={}", count));
+	VA_LOG("RHI", std::format("CreateBindingLayout: Count={}, Compute={}", count, isCompute));
 	auto layout = std::make_unique<BindingLayout_DirectX>();
-	layout->Create(device.Get(), entries, count);
+	layout->Create(device.Get(), entries, count, isCompute);
 	return layout;
 }
 
@@ -103,16 +107,110 @@ std::unique_ptr<IPipelineState> RenderDevice_DirectX::CreatePipelineState(const 
 	return state;
 }
 
+std::unique_ptr<IPipelineState> RenderDevice_DirectX::CreateComputePipelineState(const ComputePipelineStateDesc& desc)
+{
+	VA_LOG("RHI", "CreateComputePipelineState");
+	auto state = std::make_unique<PipelineState_DirectX>();
+	state->Create(device.Get(), desc);
+	return state;
+}
+
 std::unique_ptr<ITexture> RenderDevice_DirectX::CreateTexture()
 {
 	VA_LOG("RHI", "CreateTexture");
 	return std::make_unique<Texture_DirectX>();
 }
 
+std::unique_ptr<ITexture> RenderDevice_DirectX::CreateTextureFloat()
+{
+	VA_LOG("RHI", "CreateTextureFloat");
+	return std::make_unique<TextureFloat_DirectX>();
+}
+
 std::unique_ptr<ITexture2DArray> RenderDevice_DirectX::CreateTexture2DArray()
 {
 	VA_LOG("RHI", "CreateTexture2DArray");
 	return std::make_unique<Texture2DArray_DX>();
+}
+
+std::unique_ptr<ITextureUAV> RenderDevice_DirectX::CreateTextureUAV()
+{
+	VA_LOG("RHI", "CreateTextureUAV");
+	return std::make_unique<TextureUAV_DirectX>();
+}
+
+std::unique_ptr<IResourceView> RenderDevice_DirectX::CreateBufferSRV(IBuffer* buffer, uint32_t numElements, uint32_t strideBytes)
+{
+	if (buffer == nullptr)
+		throw std::runtime_error("CreateBufferSRV: buffer is null");
+
+	auto* d3dResource = static_cast<ID3D12Resource*>(buffer->GetNativeResource());
+
+	auto slot = AllocateSRVDescriptor();
+
+	D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
+	srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+	srvDesc.ViewDimension           = D3D12_SRV_DIMENSION_BUFFER;
+	srvDesc.Buffer.FirstElement     = 0;
+	srvDesc.Buffer.NumElements      = numElements;
+
+	if (strideBytes == 0)
+	{
+		// Raw byte buffer (ByteAddressBuffer): R32_TYPELESS + RAW flag, NumElements는 4-byte 단위 개수
+		srvDesc.Format                = DXGI_FORMAT_R32_TYPELESS;
+		srvDesc.Buffer.Flags          = D3D12_BUFFER_SRV_FLAG_RAW;
+		srvDesc.Buffer.StructureByteStride = 0;
+	}
+	else
+	{
+		// Structured buffer
+		srvDesc.Format                     = DXGI_FORMAT_UNKNOWN;
+		srvDesc.Buffer.Flags               = D3D12_BUFFER_SRV_FLAG_NONE;
+		srvDesc.Buffer.StructureByteStride = strideBytes;
+	}
+
+	device->CreateShaderResourceView(d3dResource, &srvDesc, slot.cpu);
+
+	ResourceViewDesc viewDesc{ EResourceViewType::ShaderResourceView, 1, 1 };
+	auto* bufferAsResource = static_cast<IRHIResource*>(buffer);
+	return std::make_unique<ResourceView_DirectX>(viewDesc, slot.cpu, slot.gpu, bufferAsResource);
+}
+
+std::unique_ptr<IResourceView> RenderDevice_DirectX::CreateBufferUAV(IBuffer* buffer, uint32_t numElements, uint32_t strideBytes)
+{
+	if (buffer == nullptr)
+		throw std::runtime_error("CreateBufferUAV: buffer is null");
+
+	auto* d3dResource = static_cast<ID3D12Resource*>(buffer->GetNativeResource());
+
+	auto slot = AllocateSRVDescriptor();
+
+	D3D12_UNORDERED_ACCESS_VIEW_DESC uavDesc = {};
+	uavDesc.ViewDimension      = D3D12_UAV_DIMENSION_BUFFER;
+	uavDesc.Buffer.FirstElement = 0;
+	uavDesc.Buffer.NumElements  = numElements;
+	uavDesc.Buffer.CounterOffsetInBytes = 0;
+
+	if (strideBytes == 0)
+	{
+		// RWByteAddressBuffer
+		uavDesc.Format                      = DXGI_FORMAT_R32_TYPELESS;
+		uavDesc.Buffer.Flags                = D3D12_BUFFER_UAV_FLAG_RAW;
+		uavDesc.Buffer.StructureByteStride  = 0;
+	}
+	else
+	{
+		// RWStructuredBuffer
+		uavDesc.Format                      = DXGI_FORMAT_UNKNOWN;
+		uavDesc.Buffer.Flags                = D3D12_BUFFER_UAV_FLAG_NONE;
+		uavDesc.Buffer.StructureByteStride  = strideBytes;
+	}
+
+	device->CreateUnorderedAccessView(d3dResource, nullptr, &uavDesc, slot.cpu);
+
+	ResourceViewDesc viewDesc{ EResourceViewType::UnorderedAccessView, 1, 1 };
+	auto* bufferAsResource = static_cast<IRHIResource*>(buffer);
+	return std::make_unique<ResourceView_DirectX>(viewDesc, slot.cpu, slot.gpu, bufferAsResource);
 }
 
 std::unique_ptr<IDepthBuffer> RenderDevice_DirectX::CreateDepthBuffer(uint32_t width, uint32_t height, EPixelFormat format)

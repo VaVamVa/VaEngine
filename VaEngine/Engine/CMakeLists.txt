@@ -17,6 +17,7 @@ file(GLOB_RECURSE ENGINE_SOURCES
     "Private/Animation/*.cpp"
     "Private/Asset/*.cpp"
     "Private/Core/*.cpp"
+    "Private/Demo/*.cpp"
     "Private/Mesh/*.cpp"
     "Private/Object/*.cpp"
     "Private/Scene/*.cpp"
@@ -136,25 +137,32 @@ if(USE_DIRECTX)
     set(_dx_shader_bin "${CMAKE_CURRENT_BINARY_DIR}/_Shaders")
     file(MAKE_DIRECTORY "${_dx_shader_bin}")
 
+    # 공용 셰이더 헤더 — 모든 .hlsl 컴파일이 의존
+    set(_dx_shader_common_files
+        "${_dx_shader_common}/Sampler.hlsli"
+        "${_dx_shader_common}/Lighting.hlsli"
+        "${_dx_shader_common}/Global.hlsli"
+    )
+
     add_custom_command(
         OUTPUT
-            "${_dx_shader_bin}/CubeShader_VS.cso"
-            "${_dx_shader_bin}/CubeShader_PS.cso"
+            "${_dx_shader_bin}/ForwardOpaque_VS.cso"
+            "${_dx_shader_bin}/ForwardOpaque_PS.cso"
         COMMAND $<TARGET_FILE:VaShaderCompiler>
                 --target dx
-                --in "${_dx_shader_src}/CubeShader.hlsl"
+                --in "${_dx_shader_src}/ForwardOpaque.hlsl"
                 --stage vs --entry VSMain
-                --out "${_dx_shader_bin}/CubeShader_VS.cso"
+                --out "${_dx_shader_bin}/ForwardOpaque_VS.cso"
         COMMAND $<TARGET_FILE:VaShaderCompiler>
                 --target dx
-                --in "${_dx_shader_src}/CubeShader.hlsl"
+                --in "${_dx_shader_src}/ForwardOpaque.hlsl"
                 --stage ps --entry PSMain
-                --out "${_dx_shader_bin}/CubeShader_PS.cso"
+                --out "${_dx_shader_bin}/ForwardOpaque_PS.cso"
         DEPENDS
             VaShaderCompiler
-            "${_dx_shader_src}/CubeShader.hlsl"
-            "${_dx_shader_common}/Sampler.hlsli"
-        COMMENT "셰이더 컴파일: CubeShader"
+            "${_dx_shader_src}/ForwardOpaque.hlsl"
+            ${_dx_shader_common_files}
+        COMMENT "셰이더 컴파일: ForwardOpaque"
         VERBATIM
     )
 
@@ -175,17 +183,122 @@ if(USE_DIRECTX)
         DEPENDS
             VaShaderCompiler
             "${_dx_shader_src}/AnimationDemo.hlsl"
-            "${_dx_shader_common}/Lighting.hlsli"
-            "${_dx_shader_common}/Sampler.hlsli"
+            ${_dx_shader_common_files}
         COMMENT "셰이더 컴파일: AnimationDemo"
         VERBATIM
     )
 
+    add_custom_command(
+        OUTPUT
+            "${_dx_shader_bin}/Sky_VS.cso"
+            "${_dx_shader_bin}/Sky_PS.cso"
+        COMMAND $<TARGET_FILE:VaShaderCompiler>
+                --target dx
+                --in "${_dx_shader_src}/Sky.hlsl"
+                --stage vs --entry VSMain
+                --out "${_dx_shader_bin}/Sky_VS.cso"
+        COMMAND $<TARGET_FILE:VaShaderCompiler>
+                --target dx
+                --in "${_dx_shader_src}/Sky.hlsl"
+                --stage ps --entry PSMain
+                --out "${_dx_shader_bin}/Sky_PS.cso"
+        DEPENDS
+            VaShaderCompiler
+            "${_dx_shader_src}/Sky.hlsl"
+            ${_dx_shader_common_files}
+        COMMENT "셰이더 컴파일: Sky"
+        VERBATIM
+    )
+
+    add_custom_command(
+        OUTPUT
+            "${_dx_shader_bin}/Glyph_VS.cso"
+            "${_dx_shader_bin}/Glyph_PS.cso"
+        COMMAND $<TARGET_FILE:VaShaderCompiler>
+                --target dx
+                --in "${_dx_shader_src}/Glyph.hlsl"
+                --stage vs --entry VSMain
+                --out "${_dx_shader_bin}/Glyph_VS.cso"
+        COMMAND $<TARGET_FILE:VaShaderCompiler>
+                --target dx
+                --in "${_dx_shader_src}/Glyph.hlsl"
+                --stage ps --entry PSMain
+                --out "${_dx_shader_bin}/Glyph_PS.cso"
+        DEPENDS
+            VaShaderCompiler
+            "${_dx_shader_src}/Glyph.hlsl"
+            ${_dx_shader_common_files}
+        COMMENT "셰이더 컴파일: Glyph"
+        VERBATIM
+    )
+
+    add_custom_command(
+        OUTPUT
+            "${_dx_shader_bin}/DebugLine_VS.cso"
+            "${_dx_shader_bin}/DebugLine_PS.cso"
+        COMMAND $<TARGET_FILE:VaShaderCompiler>
+                --target dx
+                --in "${_dx_shader_src}/DebugLine.hlsl"
+                --stage vs --entry VSMain
+                --out "${_dx_shader_bin}/DebugLine_VS.cso"
+        COMMAND $<TARGET_FILE:VaShaderCompiler>
+                --target dx
+                --in "${_dx_shader_src}/DebugLine.hlsl"
+                --stage ps --entry PSMain
+                --out "${_dx_shader_bin}/DebugLine_PS.cso"
+        DEPENDS
+            VaShaderCompiler
+            "${_dx_shader_src}/DebugLine.hlsl"
+            ${_dx_shader_common_files}
+        COMMENT "셰이더 컴파일: DebugLine"
+        VERBATIM
+    )
+
+    add_custom_command(
+        OUTPUT
+            "${_dx_shader_bin}/HelloCompute_CS.cso"
+        COMMAND $<TARGET_FILE:VaShaderCompiler>
+                --target dx
+                --in "${_dx_shader_src}/HelloCompute.hlsl"
+                --stage cs --entry CSMain
+                --out "${_dx_shader_bin}/HelloCompute_CS.cso"
+        DEPENDS
+            VaShaderCompiler
+            "${_dx_shader_src}/HelloCompute.hlsl"
+            ${_dx_shader_common_files}
+        COMMENT "셰이더 컴파일: HelloCompute (CS)"
+        VERBATIM
+    )
+
+    add_custom_command(
+        OUTPUT
+            "${_dx_shader_bin}/BonePaletteCompute_CS.cso"
+        COMMAND $<TARGET_FILE:VaShaderCompiler>
+                --target dx
+                --in "${_dx_shader_src}/BonePaletteCompute.hlsl"
+                --stage cs --entry CSMain
+                --out "${_dx_shader_bin}/BonePaletteCompute_CS.cso"
+        DEPENDS
+            VaShaderCompiler
+            "${_dx_shader_src}/BonePaletteCompute.hlsl"
+            ${_dx_shader_common_files}
+        COMMENT "셰이더 컴파일: BonePaletteCompute (CS)"
+        VERBATIM
+    )
+
     add_custom_target(CompileShaders DEPENDS
-        "${_dx_shader_bin}/CubeShader_VS.cso"
-        "${_dx_shader_bin}/CubeShader_PS.cso"
+        "${_dx_shader_bin}/ForwardOpaque_VS.cso"
+        "${_dx_shader_bin}/ForwardOpaque_PS.cso"
         "${_dx_shader_bin}/AnimationDemo_VS.cso"
         "${_dx_shader_bin}/AnimationDemo_PS.cso"
+        "${_dx_shader_bin}/Sky_VS.cso"
+        "${_dx_shader_bin}/Sky_PS.cso"
+        "${_dx_shader_bin}/Glyph_VS.cso"
+        "${_dx_shader_bin}/Glyph_PS.cso"
+        "${_dx_shader_bin}/DebugLine_VS.cso"
+        "${_dx_shader_bin}/DebugLine_PS.cso"
+        "${_dx_shader_bin}/HelloCompute_CS.cso"
+        "${_dx_shader_bin}/BonePaletteCompute_CS.cso"
     )
     add_dependencies(Engine CompileShaders)
 
@@ -227,6 +340,10 @@ endif()
 target_include_directories(Engine
     PUBLIC  Public
     PRIVATE Private
+)
+
+target_compile_definitions(Engine PRIVATE
+    "_FILES_DIR=\"${CMAKE_SOURCE_DIR}/_Files/\""
 )
 
 target_precompile_headers(Engine PRIVATE pch.h)

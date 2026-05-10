@@ -127,10 +127,13 @@ void Texture2DArray_DX::Upload(IRenderDevice* iDevice,
     device->CreateShaderResourceView(textureResource.Get(), &srvDesc, srv.cpu);
 }
 
-void Texture2DArray_DX::Bind(ICommandList* cmdList, uint32_t slot)
+void Texture2DArray_DX::Bind(ICommandList* cmdList, uint32_t slot, bool isCompute)
 {
     auto* d3dCmd = static_cast<CommandList_DirectX*>(cmdList)->GetHandle();
     ID3D12DescriptorHeap* heaps[] = { globalSrvHeap };
     d3dCmd->SetDescriptorHeaps(1, heaps);
-    d3dCmd->SetGraphicsRootDescriptorTable(slot, srvGpuHandle);
+    if (isCompute)
+        d3dCmd->SetComputeRootDescriptorTable(slot, srvGpuHandle);
+    else
+        d3dCmd->SetGraphicsRootDescriptorTable(slot, srvGpuHandle);
 }

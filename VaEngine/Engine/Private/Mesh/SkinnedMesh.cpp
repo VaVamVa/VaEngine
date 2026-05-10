@@ -41,3 +41,24 @@ void SkinnedMesh::DrawInstanced(ICommandList* cmdList, uint32_t instanceCount)
     cmdList->SetIndexBuffer(indexBuffer.get(), EIndexFormat::UInt16, indexCount * sizeof(uint16_t));
     cmdList->DrawIndexedInstanced(indexCount, instanceCount);
 }
+
+void SkinnedMesh::CreateBonePalette(IRenderDevice* device, uint32_t inMaxInstances)
+{
+    // BonePaletteCompute.hlsl MAX_MODEL_TRANSFORMS와 동일 — indexing 통일 위해 mesh의 실제 본 수와 무관
+    constexpr uint32_t kBonesPerInstance = 250;
+    constexpr uint32_t kFloat4PerBone    = 4;
+    constexpr uint32_t kFloat4Stride     = sizeof(float) * 4;
+
+    maxInstances = inMaxInstances;
+    const uint32_t numFloat4 = inMaxInstances * kBonesPerInstance * kFloat4PerBone;
+
+    bonePaletteBuffer = device->CreateBuffer({
+        .size   = static_cast<uint64_t>(numFloat4) * kFloat4Stride,
+        .usage  = EBufferUsage::UnorderedAccess,
+        .access = EMemoryAccess::Default,
+        .stride = kFloat4Stride
+    });
+
+    bonePaletteUAV = device->CreateBufferUAV(bonePaletteBuffer.get(), numFloat4, kFloat4Stride);
+    bonePaletteSRV = device->CreateBufferSRV(bonePaletteBuffer.get(), numFloat4, kFloat4Stride);
+}

@@ -16,6 +16,7 @@
 #include "System/IPointerInput.h"
 #include "System/InputSystem.h"
 #include "System/ITime.h"
+#include "System/TimerSystem.h"
 
 #include <memory>
 #include <cstdint>
@@ -60,6 +61,7 @@ private:
 	std::unique_ptr<IPointerInput>   pointerInput;
 	std::unique_ptr<InputSystem>     inputSystem;
 	std::unique_ptr<ITime>           time;
+	std::unique_ptr<TimerSystem>     timerSystem;
 
 	ForwardRenderer                  renderer;
 	AnimationRenderer                animationRenderer;

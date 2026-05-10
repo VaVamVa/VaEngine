@@ -8,9 +8,9 @@ class RenderDevice_DirectX;
 class Texture_DirectX : public ITexture
 {
 public:
-	void LoadFromFile(IRenderDevice* device, const wchar_t* path) override;
+	void LoadFromFile(IRenderDevice* device, const char* path) override;
 	void LoadFromMemory(IRenderDevice* device, const void* pixels, uint32_t width, uint32_t height) override;
-	void Bind(ICommandList* cmdList, uint32_t slot) override;
+	void Bind(ICommandList* cmdList, uint32_t slot, bool isCompute = false) override;
 
 private:
 	void Upload(RenderDevice_DirectX* device, const void* pixels, uint32_t width, uint32_t height);
