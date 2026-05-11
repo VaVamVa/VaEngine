@@ -1,0 +1,10 @@
+[kachujin_MAT]
+ambient=0,0,0,1
+diffuse=0.8,0.8,0.8,1
+specular=0.5,0.5,0.5
+shininess=20
+emissive=0,0,0,0
+diffuse_tex=Kachujin_diffuse.png
+normal_tex=Kachujin_normal.png
+specular_tex=Kachujin_specular.png
+

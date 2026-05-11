@@ -1,6 +1,8 @@
 # VaEngine — 프로젝트 현황판
 
-> 마지막 업데이트: 2026-05-01
+> 마지막 업데이트: 2026-05-10 (세션 2)
+>
+> **[공지] 이 문서는 현황판입니다. ToDo 항목은 각 날짜의 Log 파일에만 기록합니다.**
 
 ---
 
@@ -11,34 +13,41 @@ DirectX12 + Vulkan 크로스 플랫폼 3D 렌더링 엔진.
 
 ---
 
-## 확정 아키텍처 (2026-05-01 기준)
+## 핵심 아키텍처 (2026-05-10 기준)
 
-**레이어 순서:**
+### Execute (Engine 소유) + ApplicationManager (Application 소유)
+
+`Execute`는 Engine 레이어로 이동하여 GPU 초기화, 프레임 루프, RHI 관리를 전담한다.
+Application은 `ApplicationManager` 인터페이스를 구현하여 "무엇을 그릴지"에 대한 데이터만 제공한다.
+
+**레이어 책임:**
+
+| 레이어 | 역할 |
+|---|---|
+| Platform | OS 진입점(WinMain/Android), IExecute 인스턴스화 및 메인 루프 실행 |
+| Engine | RHI 추상화, Execute(오케스트레이터), RenderGraph(패스 관리), Renderer(구현체) |
+| Application/Core | 공통 유틸리티 (FreeCamera, LightManager, Time 등) |
+| Application/Source | 프로그램 고유 로직 (VaProgramName), WorldObject 서브클래스 |
+
+**Execute 호출 흐름:**
+
 ```
-Platform (OS 및 Target Properties 결정)
-  → Engine  (Target에 맞는 API 채택, IExecute 정의)
-    → Application (Client — 앱 로직)
+Execute::OnLoop()
+  ├─ OnPreUpdate()                             (Engine 내부 — 입력/시간 처리)
+  ├─ management->OnUpdate(delta)               (Application 구현 — 게임 로직, Transform 갱신)
+  ├─ OnPreRender()                             (Engine 내부 — 커맨드 기록 준비)
+  │
+  ├─ RenderScene scene;                        (스냅샷 버켓 생성)
+  ├─ management->SubmitRenderState(&scene)     (Application 구현 — 현재 상태 복사/제출)
+  │
+  ├─ scene.SortCommands()                      (Engine 내부 — 64비트 키 기반 병렬 정렬)
+  ├─ RenderGraph graph;                        (엔진 내부 빌드)
+  ├─ renderer->AddPasses(graph, output)        (Renderer: 패스 구성 - ForwardPass 등)
+  ├─ graph.Compile()                           (Engine: DAG 분석, 자동 배리어 삽입)
+  ├─ graph.Execute(cmdList, scene)             (Engine: 정렬된 명령 기록 및 실행)
+  │
+  └─ Present / Signal                          (Engine 내부)
 ```
-
-**빌드 의존성:**
-```
-Engine.lib ← Application.lib ← ExecWindows.exe
-                              ← ExecAndroid.so
-```
-
-**각 레이어 역할:**
-
-| 레이어 | 프로젝트 | 역할 |
-|---|---|---|
-| Platform | ExecWindows / ExecAndroid | OS 진입점, Loop, IExecute 구현체 |
-| Engine | Engine.lib | RHI 인터페이스, IExecute 정의, 플랫폼 무관 인프라 |
-| Client | Application.lib | 앱 로직 (Engine API 사용) |
-
-**IExecute 설계 원칙:**
-- `IExecute.h` → `Engine/Public/Interfaces/` 소유
-- Loop 호출 주체 = Platform (ExecWindows / ExecAndroid)
-- 구현체 = 각 Exec 프로젝트 (HWND / ANativeWindow 직접 사용)
-- Application은 Engine API를 사용하는 클라이언트 코드
 
 ---
 
@@ -46,38 +55,55 @@ Engine.lib ← Application.lib ← ExecWindows.exe
 
 ```
 VaEngine/
-├── CMakeLists.txt              ← 최상위. option(USE_DX12/USE_VULKAN), 전체 add_subdirectory
-├── CMakePresets.json           ← windows-dx12 / windows-vulkan / android 프리셋
-├── README.md                   ← NDK / Vulkan SDK 설치 가이드
-├── ThirdParty/
-│   ├── Main.py                 ← 자동화 코드 진입점
-│   └── GeneratePublicHeader.py ← InnerDependencies.h 갱신 + Private cpp 자동 생성
+├── CMakeLists.txt
+├── CMakePresets.json               ← windows-directx / asset-importer / engine 프리셋
 ├── Engine/
-│   ├── CMakeLists.txt          ← GLOB_RECURSE, 조건부 RHI 소스, PCH
+│   ├── _Shaders/
+│   │   ├── Common/                 ← Lighting.hlsli, Sampler.hlsli 등 공유 헤더
+│   │   └── DirectX/               ← CubeShader.hlsl, AnimationDemo.hlsl, Sky.hlsl
 │   ├── Public/
-│   │   ├── InnerDependencies.h ← 자동 관리 (빌드 시 갱신)
-│   │   └── Interfaces/         ← IExecute.h, IRenderDevice.h, ICommandQueue.h 등
-│   ├── Private/
-│   │   ├── RHI/
-│   │   │   ├── DX12/           ← (구현 예정) DX12RenderDevice
-│   │   │   └── Vulkan/         ← (구현 예정) VulkanRenderDevice
-│   │   └── Core/               ← (예정) 플랫폼 무관 내부 구현
-│   └── Engine.cpp
+│   │   ├── Animation/              ← AnimClip.h, AnimController.h
+│   │   ├── Asset/                  ← MeshAsset.h, SkmAsset.h, ClipAsset.h, *Loader.h
+│   │   ├── Interfaces/             ← IActivate.h
+│   │   ├── Manager/                ← ApplicationManager.h
+│   │   ├── Math/                   ← Container.h (Matrix4x4, Quaternion 등)
+│   │   ├── Mesh/                   ← IMesh.h, MeshData.h, SkinnedVertex.h, 각종 Shape
+│   │   ├── Object/                 ← WorldObject.h, Skeleton.h, WorldAnimatedModel.h
+│   │   ├── RHI/                    ← IBuffer.h, IDepthBuffer.h, ITexture2DArray.h, IRenderDevice.h 등
+│   │   ├── Render/                 ← IRenderer.h, IMaterial.h, ILight.h, AnimationRenderer.h
+│   │   ├── Scene/                  ← RenderScene.h, BaseCamera.h, Transform.h
+│   │   ├── System/                 ← ITime.h, IKeyInput.h, InputContext.h 등
+│   │   └── Utilities/              ← Locator.h, Singleton.h, Helpers.h
+│   └── Private/
+│       ├── Animation/              ← AnimController.cpp
+│       ├── Asset/                  ← MeshLoader.cpp, SkmLoader.cpp, ClipLoader.cpp
+│       ├── Execute.cpp / .h        ← Engine 루프 오케스트레이터
+│       ├── Math/
+│       ├── Mesh/                   ← MeshPrimitive, CubeShape, SkinnedMesh 등
+│       ├── Object/                 ← Skeleton.cpp, WorldAnimatedModel.cpp
+│       ├── RHI/
+│       │   └── DirectX/            ← DX12 백엔드 (CommandList, RenderDevice, SwapChain 등)
+│       │       ├── Buffer/         ← Buffer_DirectX, DepthBuffer_DirectX
+│       │       ├── Pipeline/       ← PipelineState_DirectX
+│       │       ├── Shader/
+│       │       └── Texture/        ← Texture_DirectX, TextureFloat_DirectX, Texture2DArray_DX
+│       ├── Render/                 ← ForwardRenderer, AnimationRenderer, RenderGraph
+│       ├── Scene/
+│       ├── System/
+│       └── Utilities/
 ├── Application/
-│   ├── CMakeLists.txt
-│   └── Application.cpp
-└── Platforms/
-    ├── ExecWindows/
-    │   ├── CMakeLists.txt      ← WIN32 가드, WIN32_EXECUTABLE
-    │   └── ExecWindows.cpp     ← WinMain + Loop (IExecute 구현체 예정)
-    └── ExecAndroid/
-        ├── CMakeLists.txt      ← ANDROID 가드, SHARED
-        ├── ndk/                ← 로컬 NDK (gitignore)
-        └── app/build.gradle    ← externalNativeBuild 연결 완료
+│   ├── Core/                       ← FreeCamera, LightManager, Time 유틸
+│   └── Source/
+│       ├── Public/WorldObjects/    ← WO_Cube.h, WO_Tower.h, WO_Kachujin.h
+│       └── Private/WorldObjects/  ← 각 WorldObject 구현
+├── Platforms/
+│   ├── ExecWindows/                ← WinMain + Execute 연결
+│   └── ExecAndroid/                ← Android 진입점 (ndk)
+└── Tools/
+    ├── ShaderCompiler/             ← VaShaderCompiler (HLSL → CSO 오프라인 컴파일)
+    └── ImportTool/                 ← VaImportTool (FBX → .mesh / .smesh / .clip)
+        └── Assets/Output/          ← 변환 결과물 (→ _Assets/ 로 수동 복사)
 ```
-
-> **Engine = 플랫폼 무관 원칙**: `windows.h`, Win32 API는 Engine에 침투하지 않음.
-> 플랫폼 코드는 ExecWindows / ExecAndroid 프로젝트 내부에만 위치.
 
 ---
 
@@ -85,93 +111,84 @@ VaEngine/
 
 | 프로젝트 | 타입 | 빌드 | 코드 작성 |
 |---|---|---|---|
-| Engine | Static Library | ✅ 성공 | 🔧 자동화 환경 구성 완료 |
-| Application | Static Library | ✅ 성공 | 🔧 클라이언트 코드 골격 |
-| ExecWindows | Executable | ✅ 성공 | ⬜ 기본 틀만 |
-| ExecAndroid | Android (Gradle) | ✅ 성공 | ⬜ 기본 틀만 |
+| Engine | Static Library | ✅ 성공 | ✅ RHI/RenderGraph/Renderer/Execute + 스켈레탈 애니메이션 완료 |
+| Application | Static Library | ✅ 성공 | ✅ WorldObject 계층, LightManager, FreeCamera 완료 |
+| ExecWindows | Executable | ✅ 성공 | ✅ WinMain 연동 완료 |
+| VaShaderCompiler | Tool | ✅ 성공 | ✅ 오프라인 셰이더 컴파일 시스템 구축 완료 |
+| VaImportTool | Tool | ✅ 성공 | ✅ FBX → .mesh / .smesh / .clip 변환 완료 |
 
 ---
 
 ## 핵심 설계 원칙
 
-### Public / Private 헤더 분리
-| Public (외부 노출) | Private (Engine 내부 전용) |
-|---|---|
-| 인터페이스 (`I~~`) | 구현체 (`DX12Device`, `VulkanDevice`) |
-| 외부가 쓰는 타입 (`Handle`, `Vector`) | 내부 헬퍼, `d3d12.h` / `vulkan.h` 포함 파일 |
+### 1. 스냅샷 기반 데이터 절연 (Snapshot Isolation)
+`RenderScene`은 로직 스레드의 데이터를 렌더 스레드용 버킷(Bucket)으로 복사하여 멀티스레드 환경의 데이터 경합을 차단한다.
 
-판단 기준: **"Engine 외부(Application / ExecPlatform)가 이 헤더를 `#include`할 필요가 있는가?"**
+### 2. 64비트 렌더 커맨드 정렬 (Sorting)
+`RenderSortKey` [ Layer(4) | Translucency(1) | Pass(3) | MaterialID(16) | Depth(40) ] 를 통해 GPU 상태 변경을 최소화하고 Front-to-Back 깊이 최적화를 수행한다.
 
-### 렌더링 백엔드 추상화
-```cpp
-class IRenderDevice { ... };               // Engine/Public/ — 플랫폼 무관
-class DX12RenderDevice : IRenderDevice {}; // Engine/Private/RHI/DX12/ — Windows
-class VulkanRenderDevice : IRenderDevice {}; // Engine/Private/RHI/Vulkan/ — Android/Linux
-```
+### 3. RenderGraph (DAG & Auto-Barrier)
+패스별 리소스 의존성을 분석하여 GPU 배리어(Barrier)를 자동으로 삽입하고, 리소스 재사용(Aliasing) 및 패스 컬링을 지원한다.
 
-Engine이 모든 그래픽 API 소스를 소유. 패키징 시 `CMakePresets.json` + `option(USE_DX12/USE_VULKAN)` 으로 백엔드 선택.
+### 4. 오프라인 셰이더 컴파일 (Binary-based RHI)
+`VaShaderCompiler`를 통해 빌드 시점에 `.cso` 바이너리를 생성하며, RHI는 런타임 컴파일 없이 바이너리를 로드한다.
 
-| 대상 | USE_DX12 | USE_VULKAN |
-|---|---|---|
-| Windows | ON | OFF |
-| Android / Linux | OFF | ON |
+### 5. 멀티 플랫폼 다형성
+- **Mesh**: `MeshData` 중간 포맷을 통해 Primitive와 FBX(Assimp) 업로드 경로 통일.
+- **Math**: `Matrix4x4` 정적 팩토리를 통해 LH/RH 및 NDC 공간 차이 대응.
+- **RHI**: `BeginRenderPass` 인터페이스로 Mobile(Android) 타일 기반 아키텍처 지원.
 
-### 플랫폼 핸들 추상화
-`FNativeWindowInfo` (`Engine/Public/`) — `void* Handle` + `EPlatform` enum. 플랫폼 헤더 없음.
-`#if` 는 `Engine/Private/RHI/` 구현부에만 존재.
+### 6. 스켈레탈 애니메이션 시스템
+- **오프라인 변환**: VaImportTool (Assimp) → `.smesh` (스켈레톤 + 스키닝 정점) + `.clip` (본별 SRT, version 2)
+- **GPU 업로드**: `BakeTransformsMap` — 이름 기반 본 매핑, `Texture2DArray` [clipIdx][frameIdx][boneIdx × 4]
+- **Global SRV Heap**: `RenderDevice_DirectX` 단일 SRV Heap (1024 slots) — 다중 텍스처 바인딩 안정화
+- **Tween Transition**: `AnimController::PlayTween()` — inter-clip lerp, HLSL `lerp(currentSkinMat, nextSkinMat, TweenTime)`
+- **Bone Palette GPU 오프로드**: `BonePaletteCompute.hlsl` — Dispatch(1, instanceCount, 1), `[numthreads(250, 1, 1)]`. `SkinnedMesh`가 buffer/UAV/SRV 소유 (다종 mesh 자동 분리)
+- **3-clip Blend**: `EAnimBlendMode::Blend` — `PlayBlend(clip0, clip1, clip2)` + `SetBlendAlpha(alpha [0,2])`. CSMain에서 alpha≤1→clip0↔1, alpha>1→clip1↔2 가중 합성
 
-### 플랫폼별 라이프사이클
-| | ExecWindows | ExecAndroid |
-|---|---|---|
-| 진입점 | `WinMain` | `ANativeActivity_onCreate` |
-| 렌더링 시작 | 창 생성 즉시 | `onNativeWindowCreated` 이후 |
-| 이벤트 처리 | `PeekMessage` | `ALooper_pollAll` |
-| 백그라운드 전환 | `WM_ACTIVATE` | Surface 소멸 → 렌더러 일시 해제 |
+### 7. Meshless HDRi Sky Rendering
+- **Full-screen Triangle**: SV_VertexID (0,1,2) → NDC 삼각형 생성. VB/IB 없이 `DrawInstanced(3, 1)` 한 번으로 화면 전체 커버
+- **LatLong UV 매핑**: InvProj + InvViewRot(View 회전 역행렬)를 CB로 전달, PS에서 월드 방향 → θ/φ → UV 변환
+- **TextureFloat_DirectX**: `ITexture` 구현체, `DXGI_FORMAT_R32G32B32A32_FLOAT`, `stbi_loadf()` 사용 (`.hdr` 파일 지원)
+- **SkyPass 상시 등록**: SkyPass(ELoadAction::Clear) → ForwardPass(ELoadAction::Load) 순서로 고정
+- **에셋 경로**: `ASSETS_DIR "HDR/filename.hdr"` — `ASSETS_DIR`은 `"${CMAKE_SOURCE_DIR}/_Assets/"` (후행 슬래시 포함)
 
 ---
 
-## 코드 규칙
+## 문서 구조 (Log 및 Q&A 기록)
 
-| 항목 | 규칙 |
+| 파일 | 내용 |
 |---|---|
-| 변수 | camelCase |
-| 함수 / 클래스 / 구조체 | PascalCase |
-| 순수 가상 클래스 | `I~~` |
-| 공통 구현 포함 가상 클래스 | `Base~~` |
-| NVI 훅 / Bridge 실제 구현 함수 | `Impl_~~()` |
-| COM 리소스 관리 | `ComPtr` 필수, RAII 준수 |
-| HRESULT | 반드시 검사, 에러 시 예외 처리 |
-| 커맨드 리스트/큐 | 목적별 분리 (Direct / Copy / Compute) |
-| 리소스 상태 전환 | Barrier 명시적으로 표현 |
+| [2026-04-22_Q&A.md](2026-04-22_Q&A.md) | Public/Private 분리, RHI 구조, Platform 위치, 라이프사이클, 빌드 워크플로우 |
+| [2026-04-22_Log.md](2026-04-22_Log.md) | Q10 아키텍처 재구성, 프로젝트 4개 생성, Android 빌드 오류 해결 |
+| [2026-04-30_Q&A.md](2026-04-30_Q&A.md) | ExecAndroid 참조 경고, IApplication 혼용 문제, 플랫폼별 구현 구조 확정 |
+| [2026-04-30_Log.md](2026-04-30_Log.md) | 참조 설정, IApplication 아키텍처 재설계, RHI 백엔드 아키텍처 확정, FNativeWindowInfo 구조체 설계 |
+| [2026-05-01_Q&A.md](2026-05-01_Q&A.md) | CMake 파일 수집, RHI 백엔드 CMake 제어, FNativeWindowInfo, Vulkan/DX12 Surface, NDK, Android Vulkan, 레이어 순정 확정 |
+| [2026-05-02_Q&A.md](2026-05-02_Q&A.md) | IExecute 구현체 명명, WinMain 설계, RHI 인터페이스 설계, DX12 개요, Factory 패턴, FILE_SET, USE_DX12 매크로, DirectX-Headers |
+| [2026-05-02_Log.md](2026-05-02_Log.md) | WinMain 구현 완료, RHI 인터페이스 전체 선언, RHILoader 팩토리, DX12 환경 구성 |
+| [2026-05-03_Log.md](2026-05-03_Log.md) | DX12 RHI 핵심 객체 구현 완료 (CommandQueue, Fence, SwapChain), ThirdParty FetchContent 전환 |
+| [2026-05-04_Q&A.md](2026-05-04_Q&A.md) | IExecute 필요성, Execute 위치 결정, 엔진 배포 전략 |
+| [2026-05-04_Log.md](2026-05-04_Log.md) | Execute → Application 이동, RHI 인터페이스 재구조화, CommandList/CommandAlloc 구현, engine 프리셋 추가 |
+| [2026-05-05_Q&A.md](2026-05-05_Q&A.md) | if constexpr vs #if, USE_DEBUGGING 설계, engine 프리셋 구조, CMakePresets 검증 |
+| [2026-05-05_Log.md](2026-05-05_Log.md) | 첫 렌더링 명령(Clear) 및 WaitForPreviousFrame 구현 |
+| [2026-05-06_Log.md](2026-05-06_Log.md) | Fence 동기화 안정화 및 TRHIResource 커스텀 삭제자 적용 |
+| [2026-05-07_Log.md](2026-05-07_Log.md) | IGPUBuffer 인터페이스 설계 및 Vertex/Index Buffer 구현 |
+| [2026-05-08_Refactoring_Log.md](2026-05-08_Refactoring_Log.md) | 대규모 리팩터링: Execute Engine 이동, ApplicationManager 도입, RenderGraph/RenderScene 스냅샷, IBuffer/IShader 통합, 오프라인 셰이더 컴파일러 구축 |
+| [2026-05-08_Log.md](2026-05-08_Log.md) | Depth Buffer, Phong 조명(IMaterial+ILight), Draw Instanced, Transform 컴포넌트, LightManager, WorldObject, IActivate, VaImportTool, 텍스처 파이프라인, WO_Tower |
+| [2026-05-09_Log.md](2026-05-09_Log.md) | 스켈레탈 애니메이션 전체 구현, ImportTool 버그 수정 3종, .clip v2 bone 이름 매핑, Global SRV Heap, Tween Transition |
+| [2026-05-10_Q&A.md](2026-05-10_Q&A.md) | 외부 HDR Asset 적용 방법, LoadFromFile 인터페이스 개선 |
+| [2026-05-10_Log.md](2026-05-10_Log.md) | Meshless Sky 런타임 검증, LoadFromFile narrow 전환, ASSETS_DIR 정비, Debug Text Panel 시스템, Pick Ray, Compute 인프라 + BonePalette GPU 오프로드, 3-clip BlendBones |
+| [Plan/Plan_Animation.md](Plan/Plan_Animation.md) | 스켈레탈 애니메이션 구현 계획 (Steps 1~11 완료) |
+| [Plan/AssetImporter.md](Plan/AssetImporter.md) | VaImportTool + 텍스처 파이프라인 구현 계획 |
+| [Plan/Meshless_Sky_Rendering.md](Plan/Meshless_Sky_Rendering.md) | Meshless HDRi Sky Rendering 구현 계획 (Steps 1~9 완료) |
+| [Plan/DebugTextRendering.md](Plan/DebugTextRendering.md) | Debug Text Rendering 구현 계획 (stb_truetype + Glyph Atlas, Steps 1~9) |
 
 ---
 
 ## 환경
 
-- **언어**: C++20, HLSL
-- **IDE**: Visual Studio 2022
+- **언어**: C++20, HLSL (Model 5.0/6.0)
+- **IDE**: Visual Studio 2026 / JetBrains Rider
 - **빌드**: CMake + CMakePresets.json
-- **SDK**: Windows SDK / DirectX 12 최신, Android NDK
-
----
-
-## 문서 구조
-
-```
-Agent/
-├── Context.md               ← 작업 규칙 원본
-└── AgentLog/
-    ├── README.md            ← 이 파일 (현황판)
-    ├── {날짜}_Log.md        ← Start / Compact / End Log
-    └── {날짜}_Q&A.md        ← 질문 / 답변 기록
-```
-
-| 파일 | 내용 |
-|---|---|
-| [2026-03-16.md](2026-03-16.md) | Q10 아키텍처 확정 전 설계 토론 (Q1~Q10) |
-| [2026-04-22_Q&A.md](2026-04-22_Q&A.md) | Public/Private 분리, RHI 구조, Platform 위치, 라이프사이클, 빌드 워크플로우 |
-| [2026-04-22_Log.md](2026-04-22_Log.md) | Q10 아키텍처 재구성, 프로젝트 4개 생성, Android 빌드 오류 해결 |
-| [2026-04-30_Q&A.md](2026-04-30_Q&A.md) | ExecAndroid 참조 경고, IApplication 혼용 문제, 플랫폼별 구현 구조 확정 |
-| [2026-04-30_Log.md](2026-04-30_Log.md) | 참조 설정, 자동화 도입, IApplication 아키텍처 재설계, RHI 백엔드 아키텍처 확정 |
-| [2026-05-01_Q&A.md](2026-05-01_Q&A.md) | CMake 파일 수집 방식, RHI 백엔드 CMake 제어, FNativeWindowInfo 구조, Vulkan/DX12 Surface 생성, NDK 설치, Android Vulkan 링크 |
-| [2026-05-01_Log.md](2026-05-01_Log.md) | 세션 종료 상태 및 다음 세션 시작 항목 |
+- **SDK**: Windows SDK, Android NDK, Vulkan SDK
+- **서드파티**: DirectX-Headers, stb_image, Assimp (ImportTool 전용)
