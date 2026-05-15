@@ -23,7 +23,7 @@ public:
 	void InitializeDebugLines(IRenderDevice* device, const ShaderDesc& lineShaderDesc);
 	void AddPasses(RenderGraph& graph, const FrameOutput& output, const RenderScene& scene) override;
 	void AddDebugLinePasses(RenderGraph& graph, const FrameOutput& output);
-	void Render(ICommandList* cmdList, const RenderScene& scene, bool isTransparentPass);
+	void Render(ICommandList* cmdList, const RenderScene& scene);
 	void RenderSky(ICommandList* cmdList, const RenderScene& scene);
 	void RenderDebugLines(ICommandList* cmdList, const RenderScene& scene);
 	void RenderDebugText(ICommandList* cmdList, const RenderScene& scene, uint32_t screenW, uint32_t screenH);

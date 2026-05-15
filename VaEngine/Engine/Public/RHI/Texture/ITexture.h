@@ -15,4 +15,6 @@ public:
 
 	// isCompute=true 시 SetComputeRootDescriptorTable, 기본은 graphics
 	virtual void Bind(ICommandList* cmdList, uint32_t slot, bool isCompute = false) = 0;
+
+	virtual bool HasAlpha() const = 0;
 };

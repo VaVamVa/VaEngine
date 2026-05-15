@@ -129,7 +129,7 @@ struct ForwardPass : IRenderPass
                                 static_cast<int32_t>(output.width),
                                 static_cast<int32_t>(output.height));
 
-        renderer->Render(cmdList, scene, false); // Opaque Pass
+        renderer->Render(cmdList, scene);
 
         cmdList->EndRenderPass();
     }
@@ -138,55 +138,6 @@ struct ForwardPass : IRenderPass
     FrameOutput      output;
     uint32_t         depthHandle;
     IDepthBuffer*    depthBuffer = nullptr;  // graph 소유, 비소유 포인터
-};
-
-struct TransparentPass : IRenderPass
-{
-    TransparentPass(ForwardRenderer* renderer, const FrameOutput& output, uint32_t depthHandle)
-        : renderer(renderer), output(output), depthHandle(depthHandle) {}
-
-    void OnCompile(RenderGraph& graph) override
-    {
-        depthBuffer = graph.GetTransientDepth(depthHandle);
-    }
-
-    void DeclareResources(std::vector<PassResourceDecl>& reads,
-                          std::vector<PassResourceDecl>& writes) const override
-    {
-        writes.push_back({ output.backBuffer,          EResourceState::RenderTarget });
-        reads.push_back({ depthBuffer->GetResource(),  EResourceState::DepthRead    });
-    }
-
-    void Execute(ICommandList* cmdList, const RenderScene& scene) override
-    {
-        RenderPassDesc passDesc;
-        passDesc.renderTargetCount            = 1;
-        passDesc.renderTargets[0].view        = output.backBufferView;
-        passDesc.renderTargets[0].loadAction  = ELoadAction::Load;
-        passDesc.renderTargets[0].storeAction = EStoreAction::Store;
-
-        passDesc.depthStencil.view            = depthBuffer->GetView();
-        passDesc.depthStencil.loadAction      = ELoadAction::Load;
-        passDesc.depthStencil.storeAction     = EStoreAction::DontCare;
-
-        cmdList->BeginRenderPass(passDesc);
-        cmdList->SetViewport(0.0f, 0.0f,
-                             static_cast<float>(output.width),
-                             static_cast<float>(output.height),
-                             0.0f, 1.0f);
-        cmdList->SetScissorRect(0, 0,
-                                static_cast<int32_t>(output.width),
-                                static_cast<int32_t>(output.height));
-
-        renderer->Render(cmdList, scene, true); // Transparent Pass
-
-        cmdList->EndRenderPass();
-    }
-
-    ForwardRenderer* renderer;
-    FrameOutput      output;
-    uint32_t         depthHandle;
-    IDepthBuffer*    depthBuffer = nullptr;
 };
 
 struct DebugLinePass : IRenderPass
@@ -352,8 +303,7 @@ void ForwardRenderer::AddPasses(RenderGraph& graph, const FrameOutput& output, c
     uint32_t depthHandle = graph.DeclareTransientDepth({
         output.width, output.height, EPixelFormat::D24_UNORM_S8_UINT
     });
-    graph.AddPass<ForwardPass>(this, output, depthHandle);     // [Pass 1] Opaque
-    graph.AddPass<TransparentPass>(this, output, depthHandle); // [Pass 2] Transparent
+    graph.AddPass<ForwardPass>(this, output, depthHandle);
 
     if (debugTextRenderer)
         graph.AddPass<DebugTextPass>(this, output);
@@ -421,7 +371,7 @@ void ForwardRenderer::RenderSky(ICommandList* cmdList, const RenderScene& scene)
     cmdList->DrawInstanced(3, 1);
 }
 
-void ForwardRenderer::Render(ICommandList* cmdList, const RenderScene& scene, bool isTransparentPass)
+void ForwardRenderer::Render(ICommandList* cmdList, const RenderScene& scene)
 {
     const CameraData& cam = scene.GetCamera();
 
@@ -454,8 +404,6 @@ void ForwardRenderer::Render(ICommandList* cmdList, const RenderScene& scene, bo
     }
 
     pipelineState->Bind(cmdList);
-    // TODO: if (isTransparentPass) transparentPSO->Bind(cmdList);
-
     cmdList->SetConstantBuffer(viewProjBuffer.get(), 0);  // root param 0 → b0
     cmdList->SetConstantBuffer(lightsBuffer.get(), 1);    // root param 1 → b2
     cmdList->SetPrimitiveTopology(EPrimitiveTopology::TriangleList);
@@ -472,15 +420,6 @@ void ForwardRenderer::Render(ICommandList* cmdList, const RenderScene& scene, bo
 
     for (const RenderCommand& cmd : commands)
     {
-        // 1. 일반 메쉬만 처리 (SkinnedMesh는 AnimationRenderer가 담당)
-        if (!cmd.mesh || cmd.skinnedMesh)
-            continue;
-
-        // 2. 패스에 따른 필터링 (비트 연산으로 translucent 여부 확인)
-        bool translucent = (cmd.sortKey & (1ULL << 59)) != 0;
-        if (translucent != isTransparentPass)
-            continue;
-
         ITexture* tex = cmd.texture ? cmd.texture : texture.get();
         if (!drawList.empty()
             && drawList.back().mesh == cmd.mesh
@@ -494,9 +433,6 @@ void ForwardRenderer::Render(ICommandList* cmdList, const RenderScene& scene, bo
         }
         allInstances.push_back(cmd.worldMatrix);
     }
-
-    if (drawList.empty())
-        return;
 
     instanceBuffer->Upload(allInstances.data(), allInstances.size() * sizeof(Matrix4x4));
 

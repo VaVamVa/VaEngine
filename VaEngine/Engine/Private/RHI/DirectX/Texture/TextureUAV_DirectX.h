@@ -18,6 +18,7 @@ public:
 
 	void BindUAV(ICommandList* cmdList, uint32_t slot, bool isCompute) override;
 	void BindSRV(ICommandList* cmdList, uint32_t slot, bool isCompute) override;
+	bool HasAlpha() const override { return false; }
 
 	void* GetNativeResource() const override { return textureResource.Get(); }
 

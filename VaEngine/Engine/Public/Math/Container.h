@@ -85,6 +85,8 @@ struct Vector3
     float   Length()     const;
     Vector3 Normalized() const;
 
+    static float Distance(const Vector3& a, const Vector3& b) { return (a - b).Length(); }
+
     // LH 좌표계 기저 벡터
     static const Vector3 Zero;
     static const Vector3 One;

@@ -16,6 +16,8 @@ public:
 	Matrix4x4 GetView()       const { return view; }
 	Matrix4x4 GetProjection() const { return proj; }
 	Vector3   GetPosition()   const { return position; }
+	float     GetYaw()        const { return yaw; }
+	float     GetPitch()      const { return pitch; }
 
 protected:
 	BaseCamera(float fovY, float aspect, float nearZ, float farZ);

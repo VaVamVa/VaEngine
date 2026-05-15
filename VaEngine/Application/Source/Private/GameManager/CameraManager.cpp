@@ -53,3 +53,6 @@ void CameraManager::OnDestroy()
 
 Matrix4x4 CameraManager::GetView()       const { return camera->GetView(); }
 Matrix4x4 CameraManager::GetProjection() const { return camera->GetProjection(); }
+Vector3   CameraManager::GetPosition()   const { return camera->GetPosition(); }
+float     CameraManager::GetYaw()        const { return camera->GetYaw(); }
+float     CameraManager::GetPitch()      const { return camera->GetPitch(); }

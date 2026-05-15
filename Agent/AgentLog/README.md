@@ -1,6 +1,6 @@
 # VaEngine — 프로젝트 현황판
 
-> 마지막 업데이트: 2026-05-10 (세션 2)
+> 마지막 업데이트: 2026-05-11
 >
 > **[공지] 이 문서는 현황판입니다. ToDo 항목은 각 날짜의 Log 파일에만 기록합니다.**
 
@@ -13,7 +13,7 @@ DirectX12 + Vulkan 크로스 플랫폼 3D 렌더링 엔진.
 
 ---
 
-## 핵심 아키텍처 (2026-05-10 기준)
+## 핵심 아키텍처 (2026-05-11 기준)
 
 ### Execute (Engine 소유) + ApplicationManager (Application 소유)
 
@@ -124,21 +124,24 @@ VaEngine/
 ### 1. 스냅샷 기반 데이터 절연 (Snapshot Isolation)
 `RenderScene`은 로직 스레드의 데이터를 렌더 스레드용 버킷(Bucket)으로 복사하여 멀티스레드 환경의 데이터 경합을 차단한다.
 
-### 2. 64비트 렌더 커맨드 정렬 (Sorting)
-`RenderSortKey` [ Layer(4) | Translucency(1) | Pass(3) | MaterialID(16) | Depth(40) ] 를 통해 GPU 상태 변경을 최소화하고 Front-to-Back 깊이 최적화를 수행한다.
+### 2. 통합 커맨드 스트림 (Unified Command Stream)
+정적 메시(`IMesh`)와 스키닝 메시(`SkinnedMesh`)를 단일 `RenderCommand` 리스트로 통합 관리한다. `skinnedMesh` 필드 유무로 두 종류를 구분하며, `GetSkinnedCommands()` 별도 인터페이스는 제거되었다. 모든 명령이 하나의 리스트에서 정렬·분배되므로 Opaque/Transparent 분기가 자연스럽게 가능하다.
 
-### 3. RenderGraph (DAG & Auto-Barrier)
+### 3. 64비트 렌더 커맨드 정렬 (Sorting)
+`RenderSortKey` [ Layer(4) | Translucency(1) | Pass(3) | MaterialID(16) | Depth(40) ] 를 통해 GPU 상태 변경을 최소화하고 Front-to-Back 깊이 최적화를 수행한다. `RenderScene::CalculateSortKey()`가 오브젝트 제출 시점에 카메라 거리(유클리드) 및 `ITexture::HasAlpha()` 결과를 자동으로 소트키에 반영한다.
+
+### 4. RenderGraph (DAG & Auto-Barrier)
 패스별 리소스 의존성을 분석하여 GPU 배리어(Barrier)를 자동으로 삽입하고, 리소스 재사용(Aliasing) 및 패스 컬링을 지원한다.
 
-### 4. 오프라인 셰이더 컴파일 (Binary-based RHI)
+### 5. 오프라인 셰이더 컴파일 (Binary-based RHI)
 `VaShaderCompiler`를 통해 빌드 시점에 `.cso` 바이너리를 생성하며, RHI는 런타임 컴파일 없이 바이너리를 로드한다.
 
-### 5. 멀티 플랫폼 다형성
+### 6. 멀티 플랫폼 다형성
 - **Mesh**: `MeshData` 중간 포맷을 통해 Primitive와 FBX(Assimp) 업로드 경로 통일.
 - **Math**: `Matrix4x4` 정적 팩토리를 통해 LH/RH 및 NDC 공간 차이 대응.
 - **RHI**: `BeginRenderPass` 인터페이스로 Mobile(Android) 타일 기반 아키텍처 지원.
 
-### 6. 스켈레탈 애니메이션 시스템
+### 7. 스켈레탈 애니메이션 시스템
 - **오프라인 변환**: VaImportTool (Assimp) → `.smesh` (스켈레톤 + 스키닝 정점) + `.clip` (본별 SRT, version 2)
 - **GPU 업로드**: `BakeTransformsMap` — 이름 기반 본 매핑, `Texture2DArray` [clipIdx][frameIdx][boneIdx × 4]
 - **Global SRV Heap**: `RenderDevice_DirectX` 단일 SRV Heap (1024 slots) — 다중 텍스처 바인딩 안정화
@@ -146,7 +149,13 @@ VaEngine/
 - **Bone Palette GPU 오프로드**: `BonePaletteCompute.hlsl` — Dispatch(1, instanceCount, 1), `[numthreads(250, 1, 1)]`. `SkinnedMesh`가 buffer/UAV/SRV 소유 (다종 mesh 자동 분리)
 - **3-clip Blend**: `EAnimBlendMode::Blend` — `PlayBlend(clip0, clip1, clip2)` + `SetBlendAlpha(alpha [0,2])`. CSMain에서 alpha≤1→clip0↔1, alpha>1→clip1↔2 가중 합성
 
-### 7. Meshless HDRi Sky Rendering
+### 8. Forward 멀티패스 렌더링
+- **패스 순서**: `SkyPass`(ELoadAction::Clear) → `ForwardPass`(Opaque, ELoadAction::Load) → `TransparentPass`(Transparent, ELoadAction::Load)
+- **Opaque/Transparent 분기**: `RenderCommand::sortKey` bit[59](`translucent` 플래그)로 판별. `ForwardRenderer::Render(isTransparentPass)`가 해당 패스에 속한 명령만 그린다.
+- **SkinnedMesh 제외**: `cmd.skinnedMesh != nullptr` 이면 ForwardRenderer에서 스킵 → `AnimationRenderer`가 전담.
+- **Depth 재사용**: `TransparentPass`는 `ForwardPass`가 기록한 깊이 버퍼를 `DepthRead`로 읽어 Z-Test만 수행 (DepthWrite 없음).
+
+### 9. Meshless HDRi Sky Rendering
 - **Full-screen Triangle**: SV_VertexID (0,1,2) → NDC 삼각형 생성. VB/IB 없이 `DrawInstanced(3, 1)` 한 번으로 화면 전체 커버
 - **LatLong UV 매핑**: InvProj + InvViewRot(View 회전 역행렬)를 CB로 전달, PS에서 월드 방향 → θ/φ → UV 변환
 - **TextureFloat_DirectX**: `ITexture` 구현체, `DXGI_FORMAT_R32G32B32A32_FLOAT`, `stbi_loadf()` 사용 (`.hdr` 파일 지원)
@@ -178,6 +187,7 @@ VaEngine/
 | [2026-05-09_Log.md](2026-05-09_Log.md) | 스켈레탈 애니메이션 전체 구현, ImportTool 버그 수정 3종, .clip v2 bone 이름 매핑, Global SRV Heap, Tween Transition |
 | [2026-05-10_Q&A.md](2026-05-10_Q&A.md) | 외부 HDR Asset 적용 방법, LoadFromFile 인터페이스 개선 |
 | [2026-05-10_Log.md](2026-05-10_Log.md) | Meshless Sky 런타임 검증, LoadFromFile narrow 전환, ASSETS_DIR 정비, Debug Text Panel 시스템, Pick Ray, Compute 인프라 + BonePalette GPU 오프로드, 3-clip BlendBones |
+| [2026-05-11_Log.md](2026-05-11_Log.md) | RenderCommand 통합(Unified Command Stream), CalculateSortKey 자동화, TransparentPass 2-패스 구성, AnimationRenderer API 동기화, RenderGraph 디버그 패널, CameraManager 접근자 확장 |
 | [Plan/Plan_Animation.md](Plan/Plan_Animation.md) | 스켈레탈 애니메이션 구현 계획 (Steps 1~11 완료) |
 | [Plan/AssetImporter.md](Plan/AssetImporter.md) | VaImportTool + 텍스처 파이프라인 구현 계획 |
 | [Plan/Meshless_Sky_Rendering.md](Plan/Meshless_Sky_Rendering.md) | Meshless HDRi Sky Rendering 구현 계획 (Steps 1~9 완료) |

@@ -13,6 +13,7 @@ public:
                 uint32_t       arraySize) override;
 
     void Bind(ICommandList* cmdList, uint32_t slot, bool isCompute = false) override;
+    bool HasAlpha() const override { return false; }
 
 private:
     ComPtr<ID3D12Resource>      textureResource;

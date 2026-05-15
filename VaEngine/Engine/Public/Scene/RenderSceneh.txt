@@ -4,7 +4,6 @@
 #include "Render/ILight.h"
 #include "Animation/AnimController.h"
 #include "Utilities/DebuggingHelper.h"
-#include "RHI/Texture/ITexture.h"
 
 #include <algorithm>
 #include <vector>
@@ -62,16 +61,20 @@ inline RenderSortKey MakeSortKey(const SortKeyDesc& desc)
 
 struct RenderCommand
 {
-	RenderSortKey    sortKey       = 0;
-	SceneObjectID    objectID      = 0;
-	IMesh*           mesh          = nullptr;
-	Matrix4x4        worldMatrix;
-	ITexture*        texture       = nullptr;
+	RenderSortKey sortKey   = 0;
+	SceneObjectID objectID  = 0;
+	IMesh*        mesh      = nullptr;
+	Matrix4x4     worldMatrix;
+	ITexture*     texture   = nullptr;
+};
 
-	// Skinned Mesh Data (Optional)
-	SkinnedMesh*     skinnedMesh   = nullptr;
+struct SkinnedRenderCommand
+{
+	SkinnedMesh*     mesh          = nullptr;
+	ITexture*        texture       = nullptr;
 	ITexture2DArray* transformsMap = nullptr;
-	IBuffer*         tweenBuffer   = nullptr;
+	IBuffer*         tweenBuffer   = nullptr;  // CB_TweenFrame 데이터
+	Matrix4x4        worldMatrix;
 	uint32_t         instanceCount = 1;
 };
 
@@ -99,16 +102,16 @@ public:
 		commands.push_back(cmd);
 	}
 
-
-	void AddMesh(IMesh* mesh, const Matrix4x4& worldMatrix, ITexture* texture = nullptr, SceneObjectID id = 0, uint8_t layer = 0)
+	void AddMesh(IMesh* mesh, const Matrix4x4& worldMatrix, SceneObjectID id = 0, const bool& makeKey = false, const SortKeyDesc& sortKeyDesc = {})
 	{
-		RenderCommand cmd;
-		cmd.objectID    = id;
-		cmd.mesh        = mesh;
-		cmd.worldMatrix = worldMatrix;
-		cmd.texture     = texture;
-		cmd.sortKey     = CalculateSortKey(worldMatrix, texture, layer);
-		commands.push_back(cmd);
+		uint64_t sortKey = makeKey ? MakeSortKey(sortKeyDesc) : 0;
+		commands.push_back({ sortKey, id, mesh, worldMatrix, nullptr });
+	}
+
+	void AddMesh(IMesh* mesh, const Matrix4x4& worldMatrix, ITexture* texture, SceneObjectID id = 0, const bool& makeKey = false, const SortKeyDesc& sortKeyDesc = {})
+	{
+		uint64_t sortKey = makeKey ? MakeSortKey(sortKeyDesc) : 0;
+		commands.push_back({ sortKey, id, mesh, worldMatrix, texture });
 	}
 
 	void SortCommands()
@@ -131,17 +134,9 @@ public:
 
 	void AddSkinnedMesh(SkinnedMesh* mesh, const Matrix4x4& worldMatrix,
 	                    ITexture* texture, ITexture2DArray* transformsMap,
-	                    IBuffer* tweenBuffer, uint32_t instanceCount = 1, uint8_t layer = 0)
+	                    IBuffer* tweenBuffer, uint32_t instanceCount = 1)
 	{
-		RenderCommand cmd;
-		cmd.skinnedMesh   = mesh;
-		cmd.texture       = texture;
-		cmd.transformsMap = transformsMap;
-		cmd.tweenBuffer   = tweenBuffer;
-		cmd.worldMatrix   = worldMatrix;
-		cmd.instanceCount = instanceCount;
-		cmd.sortKey       = CalculateSortKey(worldMatrix, texture, layer);
-		commands.push_back(cmd);
+		skinnedCommands.push_back({ mesh, texture, transformsMap, tweenBuffer, worldMatrix, instanceCount });
 	}
 
 	void SetLighting(const LightingState& lighting) { lightingState = lighting; }
@@ -151,37 +146,20 @@ public:
 	void Clear()
 	{
 		commands.clear();
+		skinnedCommands.clear();
 		skyTexture = nullptr;
 	}
 
 	const CameraData&                        GetCamera()          const { return camera; }
 	const std::vector<RenderCommand>&        GetCommands()        const { return commands; }
+	const std::vector<SkinnedRenderCommand>& GetSkinnedCommands() const { return skinnedCommands; }
 	const LightingState&                     GetLighting()        const { return lightingState; }
 	ITexture*                                GetSkybox()          const { return skyTexture; }
 
 private:
-	RenderSortKey CalculateSortKey(const Matrix4x4& worldMatrix, ITexture* texture, uint8_t layer) const
-	{
-		SortKeyDesc desc;
-		
-		// 1. Layer & Translucency
-		desc.layer       = layer;
-		desc.translucent = (texture != nullptr && texture->HasAlpha());
-		desc.pass        = 0;
-		desc.materialID  = 0;
-
-		// 2. Depth calculation (distance from eye)
-		Vector3 objPos = { worldMatrix.m[3][0], worldMatrix.m[3][1], worldMatrix.m[3][2] };
-		Vector3 camPos = { camera.eyePos[0], camera.eyePos[1], camera.eyePos[2] };
-		
-		float dist = Vector3::Distance(objPos, camPos);
-		desc.depth = std::clamp(dist / 100.0f, 0.0f, 1.0f); // 0.1~100 range normalized
-
-		return MakeSortKey(desc);
-	}
-
 	CameraData                        camera;
 	LightingState                     lightingState;
 	std::vector<RenderCommand>        commands;
+	std::vector<SkinnedRenderCommand> skinnedCommands;
 	ITexture*                         skyTexture = nullptr;
 };

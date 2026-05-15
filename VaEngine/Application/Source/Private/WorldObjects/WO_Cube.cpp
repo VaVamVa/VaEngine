@@ -12,5 +12,6 @@ void WO_Cube::Initialize(IRenderDevice* device)
 
 void WO_Cube::Impl_AddToScene(RenderScene& scene) const
 {
-    scene.AddMesh(mesh.get(), transform.GetMatrix());
+    // Layer 1로 설정하여 다른 오브젝트보다 나중에 그려지게 함 (자동화 시스템 활용)
+    scene.AddMesh(mesh.get(), transform.GetMatrix(), 0, 0, 1);
 }

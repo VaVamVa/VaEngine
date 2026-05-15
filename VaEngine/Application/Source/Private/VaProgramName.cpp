@@ -34,6 +34,7 @@ void VaProgramName::OnInitialize(IRenderDevice* device)
 	kachujin->transform.SetScale(Vector3(0.01f, 0.01f, 0.01f));
 	clipIndex = 0;
 	blendAlpha = 0;
+	VA_LOG("Asset", std::format("Kachujin loaded: {} clips", kachujin->GetClipCount()));
 	
 	InputContext animCtx("AnimationTest");
 	animCtx.MapKeyBool("BlendAlphaTest", EKeyCode::Z, EInputTrigger::Down, [this]()
@@ -51,17 +52,21 @@ void VaProgramName::OnInitialize(IRenderDevice* device)
 	cube = new WO_Cube();
 	cube->Initialize(device);
 	cube->transform.SetPosition(Vector3(0.f, 6.f, 0.f));
+	VA_LOG("Asset", "WO_Cube initialized");
 
 	tower = new WO_Tower();
 	tower->Initialize(device);
 	tower->transform.SetPosition(Vector3(5.0f, 0.0f, 0.0f));
 	tower->transform.SetEulerDeg(0.f, 90.f, 90.f);
+	VA_LOG("Asset", "WO_Tower initialized");
 	
 	skyTexture = device->CreateTextureFloat().release();
 	skyTexture->LoadFromFile(device, ASSETS_DIR "HDR/sundowner_overlook_4k.hdr");
+	VA_LOG("Asset", "HDRi loaded: sundowner_overlook_4k.hdr");
 
 	lightManager = new LightManager();
 	lightManager->GetDirectionalLight()->SetEnabled(true);
+	VA_LOG("Light", "Directional light enabled");
 
 	IPointLight* pt = lightManager->AddPointLight();
 	pt->SetPosition(2.0f, -2.0f, -2.0f);
@@ -79,10 +84,10 @@ void VaProgramName::OnInitialize(IRenderDevice* device)
 	clipAutoHandle = Locator<TimerSystem>::Get().SetRepeating(5.0f, [this]()
 	{
 		clipIndex = (clipIndex + 1) % kachujin->GetClipCount();
-		//kachujin->PlayTween(clipIndex, 0.3f);
-		kachujin->PlayBlend(clipIndex, (clipIndex + 1) % kachujin->GetClipCount(), (clipIndex + 2) % kachujin->GetClipCount(),
-			0.5f, 0.5f, 0.5f);
+		kachujin->PlayTween(clipIndex, 0.3f);
+		//kachujin->PlayBlend(clipIndex, (clipIndex + 1) % kachujin->GetClipCount(), (clipIndex + 2) % kachujin->GetClipCount(), 0.5f, 0.5f, 0.5f);
 	});
+	VA_LOG("VaProgramName", "Initialized VaProgramName");
 }
 
 void VaProgramName::OnUpdate(float deltaTime)
@@ -95,10 +100,13 @@ void VaProgramName::OnUpdate(float deltaTime)
 #if VA_DEBUG
 	if (Locator<TimerSystem>::Get().IsActive(pickRayLineHandle))
 	{
-
 		VA_DRAW_LINE_DEPTH(pickRayOrigin, pickRayOrigin + pickRayDir * 20.0f, { 1.0f, 1.0f, 0.0f, 1.0f });
 	}
+	const Vector3 camPos = cameraManager->GetPosition();
+	VA_DRAW_PANEL(3, std::format("Camera: ({:.2f}, {:.2f}, {:.2f})", camPos.x, camPos.y, camPos.z));
+	VA_DRAW_PANEL(4, std::format("Yaw: {:.1f}  Pitch: {:.1f}", Math::ToDegree(cameraManager->GetYaw()), Math::ToDegree(cameraManager->GetPitch())));
 	VA_DRAW_PANEL(5, std::format("BlendAlpha: {:.2f}", blendAlpha));
+	VA_DRAW_PANEL(6, std::format("Clip[{}]: {}", clipIndex, kachujin->GetClipName(clipIndex)));
 #endif
 }
 

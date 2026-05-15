@@ -218,10 +218,10 @@ void AnimationRenderer::AddPasses(RenderGraph& graph, const FrameOutput& output,
     std::vector<SkinnedMesh*> uniqueMeshes;
     {
         std::unordered_set<SkinnedMesh*> seen;
-        for (const RenderCommand& cmd : scene.GetCommands())
+        for (const SkinnedRenderCommand& cmd : scene.GetSkinnedCommands())
         {
-            if (cmd.skinnedMesh && seen.insert(cmd.skinnedMesh).second)
-                uniqueMeshes.push_back(cmd.skinnedMesh);
+            if (cmd.mesh && seen.insert(cmd.mesh).second)
+                uniqueMeshes.push_back(cmd.mesh);
         }
     }
 
@@ -236,7 +236,7 @@ void AnimationRenderer::AddPasses(RenderGraph& graph, const FrameOutput& output,
 
 void AnimationRenderer::Render(ICommandList* cmdList, const RenderScene& scene)
 {
-    const auto& cmds = scene.GetCommands();
+    const auto& cmds = scene.GetSkinnedCommands();
     if (cmds.empty())
         return;
 
@@ -275,19 +275,19 @@ void AnimationRenderer::Render(ICommandList* cmdList, const RenderScene& scene)
     cmdList->SetConstantBuffer(lightsBuffer.get(),   1);  // b2
     cmdList->SetPrimitiveTopology(EPrimitiveTopology::TriangleList);
 
-    for (const RenderCommand& cmd : cmds)
+    for (const SkinnedRenderCommand& cmd : cmds)
     {
-        if (!cmd.skinnedMesh)
+        if (!cmd.mesh)
             continue;
 
-        const uint32_t count = std::min(cmd.instanceCount, cmd.skinnedMesh->GetMaxInstances());
+        const uint32_t count = std::min(cmd.instanceCount, cmd.mesh->GetMaxInstances());
 
         // Diffuse 텍스처 바인딩 (root param 2 → t0)
         if (cmd.texture)
             cmd.texture->Bind(cmdList, 2);
 
         // BonePalette SRV — mesh별 buffer (root param 3 → t1)
-        cmdList->SetGraphicsSRV(cmd.skinnedMesh->GetBonePaletteSRV(), 3);
+        cmdList->SetGraphicsSRV(cmd.mesh->GetBonePaletteSRV(), 3);
 
         // 인스턴스 월드 행렬 업로드 (slot 1 vertex buffer)
         instanceBuffer->Upload(&cmd.worldMatrix, count * sizeof(Matrix4x4));
@@ -296,30 +296,30 @@ void AnimationRenderer::Render(ICommandList* cmdList, const RenderScene& scene)
                                    count * static_cast<uint32_t>(sizeof(Matrix4x4)),
                                    0);
 
-        cmd.skinnedMesh->DrawInstanced(cmdList, count);
+        cmd.mesh->DrawInstanced(cmdList, count);
     }
 }
 
 void AnimationRenderer::RenderCompute(ICommandList* cmdList, const RenderScene& scene)
 {
-    const auto& cmds = scene.GetCommands();
+    const auto& cmds = scene.GetSkinnedCommands();
     if (cmds.empty()) return;
 
     computePipelineState->Bind(cmdList);  // SetComputeRootSignature + SetPipelineState
 
-    for (const RenderCommand& cmd : cmds)
+    for (const SkinnedRenderCommand& cmd : cmds)
     {
-        if (!cmd.skinnedMesh || !cmd.tweenBuffer || !cmd.transformsMap)
+        if (!cmd.mesh || !cmd.tweenBuffer || !cmd.transformsMap)
             continue;
 
-        const uint32_t count = std::min(cmd.instanceCount, cmd.skinnedMesh->GetMaxInstances());
+        const uint32_t count = std::min(cmd.instanceCount, cmd.mesh->GetMaxInstances());
 
         // root param 0: b0 ← TweenFrame
         cmdList->SetComputeConstantBuffer(cmd.tweenBuffer, 0);
         // root param 1: t0 ← TransformsMap (descriptor table, compute mode)
         cmd.transformsMap->Bind(cmdList, 1, /*isCompute*/ true);
         // root param 2: u0 ← mesh의 BonePalette UAV (root descriptor)
-        cmdList->SetComputeUAV(cmd.skinnedMesh->GetBonePaletteUAV(), 2);
+        cmdList->SetComputeUAV(cmd.mesh->GetBonePaletteUAV(), 2);
 
         // [numthreads(MAX_BONES, 1, 1)] × Dispatch(1, count, 1)
         cmdList->Dispatch(1, count, 1);

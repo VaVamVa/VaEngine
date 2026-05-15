@@ -193,7 +193,6 @@ void Execute::OnUpdate()
 	float fps = 1.0f / time->Delta();
 	VA_DRAW_PANEL(0, std::format("FPS: {:.1f} ({:.2f} ms)", fps, time->Delta() * 1000.0f));
 
-	// Step 2 검증 결과 (Run() 한 번 실행, 매 프레임 panel에 재출력)
 	HelloCompute::RenderResult();
 }
 

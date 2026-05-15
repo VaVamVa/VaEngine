@@ -24,4 +24,6 @@ public:
 
 	// SRV (descriptor table) 바인딩 — compute 결과를 후속 graphics pass에서 읽을 때
 	virtual void BindSRV(ICommandList* cmdList, uint32_t slot, bool isCompute) = 0;
+
+	virtual bool HasAlpha() const = 0;
 };
