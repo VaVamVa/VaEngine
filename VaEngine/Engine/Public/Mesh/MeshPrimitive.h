@@ -2,7 +2,7 @@
 
 #include "IMesh.h"
 #include "MeshData.h"
-#include "RHI/IBuffer.h"
+#include "RHI/Buffer/IBuffer.h"
 
 #include <memory>
 

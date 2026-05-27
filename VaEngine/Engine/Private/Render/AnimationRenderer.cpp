@@ -6,7 +6,7 @@
 #include "RHI/IRenderDevice.h"
 #include "RHI/ICommandList.h"
 #include "RHI/IRHIResource.h"
-#include "RHI/IDepthBuffer.h"
+#include "RHI/Buffer/IDepthBuffer.h"
 #include "RHI/Pipeline/PipelineDesc.h"
 #include "RHI/Pipeline/ComputePipelineDesc.h"
 #include "RHI/Common_RHI.h"
@@ -91,14 +91,15 @@ struct AnimationPass : IRenderPass
     void Execute(ICommandList* cmdList, const RenderScene& scene) override
     {
         RenderPassDesc passDesc;
-        passDesc.renderTargetCount            = 1;
-        passDesc.renderTargets[0].view        = output.backBufferView;
-        passDesc.renderTargets[0].loadAction  = ELoadAction::Load;   // ForwardRenderer 결과 유지
-        passDesc.renderTargets[0].storeAction = EStoreAction::Store;
+        passDesc.renderTargetCount              = 1;
+        passDesc.renderTargets[0].view          = output.backBufferView;
+        passDesc.renderTargets[0].loadAction    = ELoadAction::Load;   // ForwardRenderer 결과 유지
+        passDesc.renderTargets[0].storeAction   = EStoreAction::Store;
 
-        passDesc.depthStencil.view            = depthBuffer->GetView();
-        passDesc.depthStencil.loadAction      = ELoadAction::Load;   // 깊이 테스트 결과 유지
-        passDesc.depthStencil.storeAction     = EStoreAction::DontCare;
+        passDesc.depthStencil.view              = depthBuffer->GetView();
+        passDesc.depthStencil.loadAction        = ELoadAction::Clear;   // Deferred 적용 이후 Load->Clear
+        passDesc.depthStencil.storeAction       = EStoreAction::Store; // TransparentPass가 Load해야 하므로
+        passDesc.depthStencil.clearColor[0]     = 0.f;
 
         cmdList->BeginRenderPass(passDesc);
         cmdList->SetViewport(0.0f, 0.0f,
@@ -155,7 +156,7 @@ void AnimationRenderer::Initialize(IRenderDevice* device, const ShaderDesc& shad
         .shader           = shader.get(),
         .vertexInputs     = inputs,
         .vertexInputCount = 10,
-        .rtvFormat        = EPixelFormat::R8G8B8A8_UNORM,
+        .rtvFormats       = { EPixelFormat::R8G8B8A8_UNORM },
         .dsvFormat        = EPixelFormat::D24_UNORM_S8_UINT,
         .depthEnable      = true,
         .bindingLayout    = bindingLayout.get()
@@ -207,14 +208,8 @@ void AnimationRenderer::Initialize(IRenderDevice* device, const ShaderDesc& shad
     // BonePalette buffer는 SkinnedMesh가 소유 (mesh별로 한 buffer를 모든 인스턴스가 공유)
 }
 
-void AnimationRenderer::AddPasses(RenderGraph& graph, const FrameOutput& output, const RenderScene& scene)
+std::vector<SkinnedMesh*> AnimationRenderer::AddComputePasses(RenderGraph& graph, const RenderScene& scene)
 {
-    // ForwardRenderer 와 동일한 desc → 같은 핸들 반환 (depth 버퍼 재사용)
-    uint32_t depthHandle = graph.DeclareTransientDepth({
-        output.width, output.height, EPixelFormat::D24_UNORM_S8_UINT
-    });
-
-    // 이번 프레임 등장한 unique mesh 추출 (같은 mesh 공유하는 인스턴스끼리는 한 번만)
     std::vector<SkinnedMesh*> uniqueMeshes;
     {
         std::unordered_set<SkinnedMesh*> seen;
@@ -224,20 +219,34 @@ void AnimationRenderer::AddPasses(RenderGraph& graph, const FrameOutput& output,
                 uniqueMeshes.push_back(cmd.skinnedMesh);
         }
     }
-
-    // 각 mesh의 BonePalette를 graph에 import — 기본 상태는 UAV (Buffer 생성 시점과 일치)
     for (auto* m : uniqueMeshes)
         graph.ImportResource(m->GetBonePaletteBuffer(), EResourceState::UnorderedAccess);
 
-    // Compute pass (BonePalette 채움) → Graphics pass (BonePalette 읽음)
     graph.AddPass<BonePaletteComputePass>(this, uniqueMeshes);
-    graph.AddPass<AnimationPass>(this, output, depthHandle, std::move(uniqueMeshes));
+    return uniqueMeshes;
+}
+
+void AnimationRenderer::AddGraphicsPasses(RenderGraph& graph, const FrameOutput& output,
+                                           const std::vector<SkinnedMesh*>& uniqueMeshes)
+{
+    uint32_t depthHandle = graph.DeclareTransientDepth({
+        output.width, output.height, EPixelFormat::D24_UNORM_S8_UINT
+    });
+    graph.AddPass<AnimationPass>(this, output, depthHandle, uniqueMeshes);
+}
+
+void AnimationRenderer::AddPasses(RenderGraph& graph, const FrameOutput& output, const RenderScene& scene)
+{
+    auto meshes = AddComputePasses(graph, scene);
+    AddGraphicsPasses(graph, output, meshes);
 }
 
 void AnimationRenderer::Render(ICommandList* cmdList, const RenderScene& scene)
 {
     const auto& cmds = scene.GetCommands();
-    if (cmds.empty())
+    const bool hasSkinnedCmd = std::any_of(cmds.begin(), cmds.end(),
+        [](const RenderCommand& c) { return c.skinnedMesh != nullptr; });
+    if (!hasSkinnedCmd)
         return;
 
     const CameraData& cam = scene.GetCamera();

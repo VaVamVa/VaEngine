@@ -12,6 +12,7 @@
 #include "RHI/DirectX/Texture/TextureFloat_DirectX.h"
 #include "RHI/DirectX/Texture/Texture2DArray_DX.h"
 #include "RHI/DirectX/Texture/TextureUAV_DirectX.h"
+#include "RHI/DirectX/Buffer/ColorBuffer_DirectX.h"
 #include "RHI/DirectX/Shader/Shader_DirectX.h"
 #include "RHI/DirectX/DepthBuffer_DirectX.h"
 #include "RHI/DirectX/ResourceView_DirectX.h"
@@ -29,11 +30,17 @@ void RenderDevice_DirectX::Initialize()
     PickAdapter();
     // 4. D3D12 Device 생성
     CreateDevice();
-
+    // 5. 텍스처 업로드 전용 커맨드 인프라 초기화
+    CreateUploadInfra();
 }
 
 void RenderDevice_DirectX::Shutdown()
 {
+	if (uploadFenceEvent)
+	{
+		CloseHandle(uploadFenceEvent);
+		uploadFenceEvent = nullptr;
+	}
 	device.Reset();
 	adapter.Reset();
 	factory.Reset();
@@ -217,7 +224,15 @@ std::unique_ptr<IDepthBuffer> RenderDevice_DirectX::CreateDepthBuffer(uint32_t w
 {
 	VA_LOG("RHI", std::format("CreateDepthBuffer: {}x{}", width, height));
 	auto buffer = std::make_unique<DepthBuffer_DirectX>();
-	buffer->Create(device.Get(), width, height, static_cast<DXGI_FORMAT>(format));
+	buffer->Create(this, width, height, static_cast<DXGI_FORMAT>(format));
+	return buffer;
+}
+
+std::unique_ptr<IColorBuffer> RenderDevice_DirectX::CreateColorBuffer(EPixelFormat format, uint32_t width, uint32_t height)
+{
+	VA_LOG("RHI", std::format("CreateColorBuffer: {}x{}", width, height));
+	auto buffer = std::make_unique<ColorBuffer_DirectX>();
+	buffer->Create(this, format, width, height);
 	return buffer;
 }
 
@@ -351,4 +366,47 @@ RenderDevice_DirectX::SRVDescriptor RenderDevice_DirectX::AllocateSRVDescriptor(
     desc.gpu = CD3DX12_GPU_DESCRIPTOR_HANDLE(
         globalSrvHeap->GetGPUDescriptorHandleForHeapStart(), idx, srvDescriptorSize);
     return desc;
+}
+
+void RenderDevice_DirectX::CreateUploadInfra()
+{
+    D3D12_COMMAND_QUEUE_DESC qDesc = { D3D12_COMMAND_LIST_TYPE_DIRECT };
+    if (FAILED(device->CreateCommandQueue(&qDesc, IID_PPV_ARGS(&uploadQueue))))
+        throw std::runtime_error("Failed to create upload command queue");
+
+    if (FAILED(device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&uploadAlloc))))
+        throw std::runtime_error("Failed to create upload command allocator");
+
+    if (FAILED(device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT,
+                                          uploadAlloc.Get(), nullptr, IID_PPV_ARGS(&uploadCmdList))))
+        throw std::runtime_error("Failed to create upload command list");
+    uploadCmdList->Close();  // CommandList는 Open 상태로 생성되므로 즉시 Close
+
+    if (FAILED(device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&uploadFence))))
+        throw std::runtime_error("Failed to create upload fence");
+
+    uploadFenceEvent = CreateEventEx(nullptr, nullptr, 0, EVENT_ALL_ACCESS);
+    if (!uploadFenceEvent)
+        throw std::runtime_error("Failed to create upload fence event");
+
+    VA_LOG("RHI", "Upload infra initialized (reusable Direct queue)");
+}
+
+void RenderDevice_DirectX::ImmediateSubmit(
+    std::function<void(ICommandList*)> recordFn)
+{
+    uploadAlloc->Reset();
+    uploadCmdList->Reset(uploadAlloc.Get(), nullptr);
+
+    CommandList_DirectX tempCmd(uploadCmdList.Get());
+    recordFn(&tempCmd);
+
+    uploadCmdList->Close();
+    ID3D12CommandList* lists[] = { uploadCmdList.Get() };
+    uploadQueue->ExecuteCommandLists(1, lists);
+
+    ++uploadFenceValue;
+    uploadQueue->Signal(uploadFence.Get(), uploadFenceValue);
+    uploadFence->SetEventOnCompletion(uploadFenceValue, uploadFenceEvent);
+    WaitForSingleObject(uploadFenceEvent, INFINITE);
 }

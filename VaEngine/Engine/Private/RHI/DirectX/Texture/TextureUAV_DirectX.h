@@ -2,6 +2,7 @@
 
 #include "RHI/Texture/ITextureUAV.h"
 #include "RHI/DirectX/Common_DirectX.h"
+#include "RHI/IResourceView.h"
 
 class RenderDevice_DirectX;
 
@@ -18,13 +19,16 @@ public:
 
 	void BindUAV(ICommandList* cmdList, uint32_t slot, bool isCompute) override;
 	void BindSRV(ICommandList* cmdList, uint32_t slot, bool isCompute) override;
-	bool HasAlpha() const override { return false; }
+	IResourceView* GetRTV() const override { return rtvView.get(); }
 
 	void* GetNativeResource() const override { return textureResource.Get(); }
 
 private:
-	ComPtr<ID3D12Resource>      textureResource;
-	D3D12_GPU_DESCRIPTOR_HANDLE srvGpuHandle  = {};
-	D3D12_GPU_DESCRIPTOR_HANDLE uavGpuHandle  = {};
-	ID3D12DescriptorHeap*       globalSrvHeap = nullptr;
+	ComPtr<ID3D12Resource>         textureResource;
+	ComPtr<ID3D12DescriptorHeap>   rtvHeap;
+	std::unique_ptr<IResourceView> rtvView;
+
+	D3D12_GPU_DESCRIPTOR_HANDLE    srvGpuHandle  = {};
+	D3D12_GPU_DESCRIPTOR_HANDLE    uavGpuHandle  = {};
+	ID3D12DescriptorHeap*          globalSrvHeap = nullptr;
 };

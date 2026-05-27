@@ -4,7 +4,7 @@
 #include "Render/IMaterial.h"
 #include "Animation/AnimController.h"
 
-#include "RHI/IBuffer.h"
+#include "RHI/Buffer/IBuffer.h"
 #include "RHI/IResourceView.h"
 #include "RHI/Shader/IShader.h"
 #include "RHI/Texture/ITexture.h"
@@ -12,14 +12,19 @@
 #include "RHI/Pipeline/IPipelineState.h"
 
 #include <memory>
+#include <vector>
 
 class RenderScene;
+class SkinnedMesh;
 
 class AnimationRenderer : public IRenderer
 {
 public:
     void Initialize(IRenderDevice* device, const ShaderDesc& shaderDesc) override;
     void AddPasses(RenderGraph& graph, const FrameOutput& output, const RenderScene& scene) override;
+    std::vector<SkinnedMesh*> AddComputePasses(RenderGraph& graph, const RenderScene& scene);
+    void AddGraphicsPasses(RenderGraph& graph, const FrameOutput& output,
+                           const std::vector<SkinnedMesh*>& uniqueMeshes);
     void Render(ICommandList* cmdList, const RenderScene& scene);
 
     // Step 3 — bone palette compute pass (graphics pass 직전에 실행)

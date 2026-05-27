@@ -6,7 +6,7 @@
 #include "RHI/IRenderDevice.h"
 #include "RHI/ICommandList.h"
 #include "RHI/IRHIResource.h"
-#include "RHI/IDepthBuffer.h"
+#include "RHI/Buffer/IDepthBuffer.h"
 #include "RHI/Pipeline/PipelineDesc.h"
 #include "RHI/Pipeline/ComputePipelineDesc.h"
 #include "RHI/Common_RHI.h"

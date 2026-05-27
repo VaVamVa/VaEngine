@@ -5,7 +5,7 @@
 #include "Animation/AnimController.h"
 #include "Animation/AnimClip.h"
 #include "Mesh/SkinnedMesh.h"
-#include "RHI/IBuffer.h"
+#include "RHI/Buffer/IBuffer.h"
 #include "RHI/Texture/ITexture.h"
 #include "RHI/Texture/ITexture2DArray.h"
 

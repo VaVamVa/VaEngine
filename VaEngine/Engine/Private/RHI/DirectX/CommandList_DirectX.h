@@ -10,6 +10,10 @@ D3D12_RESOURCE_STATES GetResourceState(EResourceState state);
 class CommandList_DirectX : public ICommandList
 {
 public:
+	// ImmediateSubmit 전용 — 소유권 없이 기존 commandList를 래핑 (수명은 호출자가 보장)
+	explicit CommandList_DirectX(ID3D12GraphicsCommandList* handle) noexcept;
+	CommandList_DirectX() = default;
+
 	void Register(class IRenderDevice* device, const struct CommandListDesc& desc) override;
 	void Begin(class ICommandAlloc* inAllocator) override;
 	void Close() override;
@@ -34,6 +38,9 @@ public:
 	void BeginRenderPass(const RenderPassDesc& desc) override;
 	void EndRenderPass() override;
 	void CopyBuffer(IBuffer* dst, IBuffer* src, uint64_t bytes) override;
+	void CopyBufferToTexture(IRHIResource* dstTexture, uint32_t dstSubresource,
+	                         IRHIResource* srcBuffer, uint64_t srcOffset,
+	                         uint32_t width, uint32_t height, uint32_t rowPitch) override;
 
 	void SetComputeConstantBuffer(IBuffer* cb, uint32_t slot) override;
 	void SetComputeSRV(IResourceView* view, uint32_t slot) override;

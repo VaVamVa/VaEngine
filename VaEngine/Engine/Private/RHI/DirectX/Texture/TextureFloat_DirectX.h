@@ -14,7 +14,6 @@ public:
     bool HasAlpha() const override { return false; }
 
 private:
-    void Upload(RenderDevice_DirectX* device, const float* pixels, uint32_t width, uint32_t height);
 
     ComPtr<ID3D12Resource>      textureResource;
     D3D12_GPU_DESCRIPTOR_HANDLE srvGpuHandle  = {};

@@ -1,6 +1,7 @@
 #include "TextureUAV_DirectX.h"
 #include "RHI/DirectX/RenderDevice_DirectX.h"
 #include "RHI/DirectX/CommandList_DirectX.h"
+#include "RHI/DirectX/ResourceView_DirectX.h"
 
 #include <stdexcept>
 
@@ -26,7 +27,7 @@ void TextureUAV_DirectX::Create(IRenderDevice* device,
 	texDesc.SampleDesc.Count   = 1;
 	texDesc.SampleDesc.Quality = 0;
 	texDesc.Layout             = D3D12_TEXTURE_LAYOUT_UNKNOWN;
-	texDesc.Flags              = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
+	texDesc.Flags              = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS | D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET;
 
 	auto defaultHeap = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
 	if (FAILED(d3dDevice->CreateCommittedResource(
@@ -78,6 +79,28 @@ void TextureUAV_DirectX::Create(IRenderDevice* device,
 		srvDesc.Texture2D.MipLevels = 1;
 	}
 	d3dDevice->CreateShaderResourceView(textureResource.Get(), &srvDesc, srvSlot.cpu);
+
+	// 4. RTV — 1-slot private heap (SkyPass / TransparentPass에서 RT로 사용)
+	D3D12_DESCRIPTOR_HEAP_DESC rtvHeapDesc = {};
+	rtvHeapDesc.NumDescriptors             = 1;
+	rtvHeapDesc.Type                       = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
+	rtvHeapDesc.Flags                      = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
+
+	if (FAILED(d3dDevice->CreateDescriptorHeap(&rtvHeapDesc, IID_PPV_ARGS(&rtvHeap))))
+	{
+		throw std::runtime_error("Failed to create RTV descriptor heap for TextureUAV");
+	}
+
+	D3D12_RENDER_TARGET_VIEW_DESC rtvDesc = {};
+	rtvDesc.Format             = dxgiFormat;
+	rtvDesc.ViewDimension      = D3D12_RTV_DIMENSION_TEXTURE2D;
+	rtvDesc.Texture2D.MipSlice = 0;
+
+	D3D12_CPU_DESCRIPTOR_HANDLE rtvHandle = rtvHeap->GetCPUDescriptorHandleForHeapStart();
+	d3dDevice->CreateRenderTargetView(textureResource.Get(), &rtvDesc, rtvHandle);
+
+	ResourceViewDesc rtvViewDesc = { EResourceViewType::RenderTargetView };
+	rtvView = std::make_unique<ResourceView_DirectX>(rtvViewDesc, rtvHandle, this);
 }
 
 void TextureUAV_DirectX::BindUAV(ICommandList* cmdList, uint32_t slot, bool isCompute)

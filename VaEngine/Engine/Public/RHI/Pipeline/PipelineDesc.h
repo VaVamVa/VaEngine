@@ -77,8 +77,9 @@ struct PipelineStateDesc
 	const VertexInputDesc* vertexInputs;
 	uint32_t               vertexInputCount;
 
-	EPixelFormat           rtvFormat;
-	EPixelFormat           dsvFormat  = EPixelFormat::Unknown;
+	EPixelFormat           rtvFormats[8] = {};
+	uint32_t               rtvCount      = 1;
+	EPixelFormat           dsvFormat     = EPixelFormat::Unknown;
 
 	ECullMode              cullMode      = ECullMode::Back;
 	EBlendMode             blendMode     = EBlendMode::Opaque;

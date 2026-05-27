@@ -2,7 +2,7 @@
 
 #include "Render/IRenderPass.h"
 #include "RHI/Common_RHI.h"
-#include "RHI/IDepthBuffer.h"
+#include "RHI/Buffer/IDepthBuffer.h"
 
 #include <vector>
 #include <memory>

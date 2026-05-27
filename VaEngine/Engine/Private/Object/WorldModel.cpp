@@ -50,5 +50,5 @@ void WorldModel::Initialize(IRenderDevice* device,
 void WorldModel::Impl_AddToScene(RenderScene& scene) const
 {
     for (const auto& mesh : meshes)
-        scene.AddMesh(mesh.get(), transform.GetMatrix(), texture.get());
+        scene.AddMesh(mesh.get(), transform.GetMatrix(), texture.get(), renderDesc);
 }

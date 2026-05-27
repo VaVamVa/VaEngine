@@ -4,7 +4,7 @@
 #include "Render/IMaterial.h"
 #include "Animation/AnimController.h"
 
-#include "RHI/IBuffer.h"
+#include "RHI/Buffer/IBuffer.h"
 #include "RHI/IResourceView.h"
 #include "RHI/Shader/IShader.h"
 #include "RHI/Texture/ITexture.h"

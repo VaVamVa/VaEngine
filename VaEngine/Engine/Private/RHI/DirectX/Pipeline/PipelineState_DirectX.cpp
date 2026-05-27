@@ -81,8 +81,9 @@ void PipelineState_DirectX::Create(ID3D12Device* device, const PipelineStateDesc
 	case EPrimitiveTopologyType::Point: psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_POINT; break;
 	default:                            psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE; break;
 	}
-	psoDesc.NumRenderTargets                    = 1;
-	psoDesc.RTVFormats[0]                       = static_cast<DXGI_FORMAT>(desc.rtvFormat);
+	psoDesc.NumRenderTargets = desc.rtvCount;
+	for (uint32_t i = 0; i < desc.rtvCount; ++i)
+		psoDesc.RTVFormats[i] = static_cast<DXGI_FORMAT>(desc.rtvFormats[i]);
 	psoDesc.SampleDesc.Count                    = 1;
 
 	if (FAILED(device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&pipelineState))))

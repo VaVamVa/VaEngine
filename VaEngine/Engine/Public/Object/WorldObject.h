@@ -1,16 +1,16 @@
 #pragma once
 
 #include "Scene/Transform.h"
+#include "Scene/RenderScene.h"
 #include "Utilities/DebuggingHelper.h"
-
-class RenderScene;
 
 class WorldObject
 {
 public:
     virtual ~WorldObject() = default;
 
-    Transform transform;
+    Transform        transform;
+    RenderObjectDesc renderDesc;  // Client(Application)가 설정하는 렌더링 속성
 
     void AddToScene(RenderScene& scene) const
     {

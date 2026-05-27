@@ -8,6 +8,7 @@
 #include "RHI/Shader/IShader.h"
 
 #include "Demo/HelloCompute.h"
+#include "Render/IRenderer.h"
 
 #include "Utilities/Locator.h"
 #include "Utilities/DebuggingHelper.h"
@@ -78,39 +79,62 @@ void Execute::OnInitialize(NativeDisplayInfo displayInfo)
 
 #ifdef USE_DIRECTX
 		VA_LOG("RHI", "Active Backend: DirectX 12");
-		renderer.Initialize(renderDevice.get(), {
-			SHADER_DIR L"/ForwardOpaque_VS.cso",
-			SHADER_DIR L"/ForwardOpaque_PS.cso",
+		sceneRenderer.Initialize(renderDevice.get(), 1280, 720);
+		sceneRenderer.InitializeGBuffer(renderDevice.get(), {
+			SHADER_DIR L"/GBuffer_VS.cso",
+			SHADER_DIR L"/GBuffer_PS.cso",
 			"VSMain",
 			"PSMain"
 		});
-		renderer.InitializeSky(renderDevice.get(), {
+		sceneRenderer.InitializeLighting(renderDevice.get(), {
+			.csPath  = SHADER_DIR L"/DeferredLighting_CS.cso",
+			.csEntry = "CSMain"
+		});
+		sceneRenderer.InitializeBlit(renderDevice.get(), {
+			SHADER_DIR L"/Blit_VS.cso",
+			SHADER_DIR L"/Blit_PS.cso",
+			"VSMain",
+			"PSMain"
+		});
+		sceneRenderer.InitializeSky(renderDevice.get(), {
 			SHADER_DIR L"/Sky_VS.cso",
 			SHADER_DIR L"/Sky_PS.cso",
 			"VSMain",
 			"PSMain"
 		});
-		renderer.InitializeDebugLines(renderDevice.get(), {
+		sceneRenderer.InitializeForward(renderDevice.get(), {
+			SHADER_DIR L"/ForwardOpaque_VS.cso",
+			SHADER_DIR L"/ForwardOpaque_PS.cso",
+			"VSMain",
+			"PSMain"
+		});
+		sceneRenderer.InitializeAnimation(renderDevice.get(), {
+			SHADER_DIR L"/AnimationDemo_VS.cso",
+			SHADER_DIR L"/AnimationDemo_PS.cso",
+			"VSMain",
+			"PSMain"
+		});
+		sceneRenderer.InitializeGBufferSkinned(renderDevice.get(), {
+			SHADER_DIR L"/GBufferSkinned_VS.cso",
+			SHADER_DIR L"/GBufferSkinned_PS.cso",
+			"VSMain",
+			"PSMain"
+		});
+		sceneRenderer.InitializeDebugLines(renderDevice.get(), {
 			SHADER_DIR L"/DebugLine_VS.cso",
 			SHADER_DIR L"/DebugLine_PS.cso",
 			"VSMain",
 			"PSMain"
 		});
-		renderer.InitializeDebugText(renderDevice.get(), {
+		sceneRenderer.InitializeDebugText(renderDevice.get(), {
 			SHADER_DIR L"/Glyph_VS.cso",
 			SHADER_DIR L"/Glyph_PS.cso",
 			"VSMain",
 			"PSMain"
 		}, _FILES_DIR "Font/NotoSansKR-Regular.ttf");
-		animationRenderer.Initialize(renderDevice.get(), {
-			SHADER_DIR L"/AnimationDemo_VS.cso",
-			SHADER_DIR L"/AnimationDemo_PS.cso",
-			"VSMain",
-			"PSMain"
-			});
 #elif defined(USE_VULKAN)
 		VA_LOG("RHI", "Active Backend: Vulkan");
-		renderer.Initialize(renderDevice.get(), {}, 1280, 720);  // TODO: Vulkan SPIR-V 경로
+		// TODO: Vulkan SPIR-V 경로
 #endif
 
 		app->OnInitialize(renderDevice.get());
@@ -223,12 +247,12 @@ void Execute::OnRender()
 		.width          = 1280,
 		.height         = 720
 	};
-	renderer.AddPasses(renderGraph, output, scene);
-	animationRenderer.AddPasses(renderGraph, output, scene);
-	renderer.AddDebugLinePasses(renderGraph, output);  // 모든 geometry 이후 — depth test 정확도 보장
+	sceneRenderer.AddPasses(renderGraph, output, scene);
 
 	renderGraph.Compile(renderDevice.get());
 	renderGraph.Execute(commandList.get(), scene);
+
+	sceneRenderer.UpdateResourceStates(renderGraph);
 
 	ResourceBarrier presentBarrier{
 		.resource    = backBuffer,

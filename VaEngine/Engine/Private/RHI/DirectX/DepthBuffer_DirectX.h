@@ -1,22 +1,25 @@
 #pragma once
 
-#include "RHI/IDepthBuffer.h"
+#include "RHI/Buffer/IDepthBuffer.h"
 #include "RHI/IRHIResource.h"
 #include "RHI/IResourceView.h"
 #include "Common_DirectX.h"
 
 #include <memory>
 
+class IRenderDevice;
+class ICommandList;
+
 class DepthBuffer_DirectX : public IDepthBuffer
 {
 public:
-    void Create(ID3D12Device* device, uint32_t width, uint32_t height, DXGI_FORMAT format);
+    void Create(IRenderDevice* device, uint32_t width, uint32_t height, DXGI_FORMAT format);
 
     IRHIResource*  GetResource() const override { return const_cast<DepthResource*>(&depthResource); }
     IResourceView* GetView()     const override { return dsvView.get(); }
+    void           BindSRV(ICommandList* cmdList, uint32_t slot, bool isCompute) override;
 
 private:
-    // ComPtr로 수명 관리, GetNativeResource()로 외부 노출
     struct DepthResource : IRHIResource
     {
         ComPtr<ID3D12Resource> resource;
@@ -26,4 +29,8 @@ private:
     DepthResource                  depthResource;
     ComPtr<ID3D12DescriptorHeap>   dsvHeap;
     std::unique_ptr<IResourceView> dsvView;
+
+    D3D12_GPU_DESCRIPTOR_HANDLE    srvGpuHandle  = {};
+    std::unique_ptr<IResourceView> srvView;
+    ID3D12DescriptorHeap*          globalSrvHeap = nullptr;
 };

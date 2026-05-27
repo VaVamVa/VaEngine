@@ -286,6 +286,88 @@ if(USE_DIRECTX)
         VERBATIM
     )
 
+    add_custom_command(
+        OUTPUT
+            "${_dx_shader_bin}/GBuffer_VS.cso"
+            "${_dx_shader_bin}/GBuffer_PS.cso"
+        COMMAND $<TARGET_FILE:VaShaderCompiler>
+                --target dx
+                --in "${_dx_shader_src}/GBuffer.hlsl"
+                --stage vs --entry VSMain
+                --out "${_dx_shader_bin}/GBuffer_VS.cso"
+        COMMAND $<TARGET_FILE:VaShaderCompiler>
+                --target dx
+                --in "${_dx_shader_src}/GBuffer.hlsl"
+                --stage ps --entry PSMain
+                --out "${_dx_shader_bin}/GBuffer_PS.cso"
+        DEPENDS
+            VaShaderCompiler
+            "${_dx_shader_src}/GBuffer.hlsl"
+            ${_dx_shader_common_files}
+        COMMENT "셰이더 컴파일: GBuffer"
+        VERBATIM
+    )
+
+    add_custom_command(
+        OUTPUT
+            "${_dx_shader_bin}/DeferredLighting_CS.cso"
+        COMMAND $<TARGET_FILE:VaShaderCompiler>
+                --target dx
+                --in "${_dx_shader_src}/DeferredLighting.hlsl"
+                --stage cs --entry CSMain
+                --out "${_dx_shader_bin}/DeferredLighting_CS.cso"
+        DEPENDS
+            VaShaderCompiler
+            "${_dx_shader_src}/DeferredLighting.hlsl"
+            ${_dx_shader_common_files}
+        COMMENT "셰이더 컴파일: DeferredLighting (CS)"
+        VERBATIM
+    )
+
+    add_custom_command(
+        OUTPUT
+            "${_dx_shader_bin}/Blit_VS.cso"
+            "${_dx_shader_bin}/Blit_PS.cso"
+        COMMAND $<TARGET_FILE:VaShaderCompiler>
+                --target dx
+                --in "${_dx_shader_src}/Blit.hlsl"
+                --stage vs --entry VSMain
+                --out "${_dx_shader_bin}/Blit_VS.cso"
+        COMMAND $<TARGET_FILE:VaShaderCompiler>
+                --target dx
+                --in "${_dx_shader_src}/Blit.hlsl"
+                --stage ps --entry PSMain
+                --out "${_dx_shader_bin}/Blit_PS.cso"
+        DEPENDS
+            VaShaderCompiler
+            "${_dx_shader_src}/Blit.hlsl"
+            ${_dx_shader_common_files}
+        COMMENT "셰이더 컴파일: Blit"
+        VERBATIM
+    )
+
+    add_custom_command(
+        OUTPUT
+            "${_dx_shader_bin}/GBufferSkinned_VS.cso"
+            "${_dx_shader_bin}/GBufferSkinned_PS.cso"
+        COMMAND $<TARGET_FILE:VaShaderCompiler>
+                --target dx
+                --in "${_dx_shader_src}/GBufferSkinned.hlsl"
+                --stage vs --entry VSMain
+                --out "${_dx_shader_bin}/GBufferSkinned_VS.cso"
+        COMMAND $<TARGET_FILE:VaShaderCompiler>
+                --target dx
+                --in "${_dx_shader_src}/GBufferSkinned.hlsl"
+                --stage ps --entry PSMain
+                --out "${_dx_shader_bin}/GBufferSkinned_PS.cso"
+        DEPENDS
+            VaShaderCompiler
+            "${_dx_shader_src}/GBufferSkinned.hlsl"
+            ${_dx_shader_common_files}
+        COMMENT "셰이더 컴파일: GBufferSkinned"
+        VERBATIM
+    )
+
     add_custom_target(CompileShaders DEPENDS
         "${_dx_shader_bin}/ForwardOpaque_VS.cso"
         "${_dx_shader_bin}/ForwardOpaque_PS.cso"
@@ -299,6 +381,13 @@ if(USE_DIRECTX)
         "${_dx_shader_bin}/DebugLine_PS.cso"
         "${_dx_shader_bin}/HelloCompute_CS.cso"
         "${_dx_shader_bin}/BonePaletteCompute_CS.cso"
+        "${_dx_shader_bin}/GBuffer_VS.cso"
+        "${_dx_shader_bin}/GBuffer_PS.cso"
+        "${_dx_shader_bin}/DeferredLighting_CS.cso"
+        "${_dx_shader_bin}/Blit_VS.cso"
+        "${_dx_shader_bin}/Blit_PS.cso"
+        "${_dx_shader_bin}/GBufferSkinned_VS.cso"
+        "${_dx_shader_bin}/GBufferSkinned_PS.cso"
     )
     add_dependencies(Engine CompileShaders)
 

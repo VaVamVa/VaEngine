@@ -4,6 +4,16 @@
 #include <stdexcept>
 #include <cstdint>
 
+#include "RHI/IRHIResource.h"
+
+// ImmediateSubmit 내부에서 로컬 ID3D12Resource*를 IRHIResource*로 임시 래핑할 때 사용.
+struct RawResource final : IRHIResource
+{
+    explicit RawResource(void* p) : ptr(p) {}
+    void* GetNativeResource() const override { return ptr; }
+    void* ptr;
+};
+
 // ComPtr(WindowsRuntimeLibrary)
 #include <wrl/client.h>
 using Microsoft::WRL::ComPtr;

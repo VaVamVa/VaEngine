@@ -12,7 +12,7 @@
 
 #include "Mesh/IMesh.h"
 #include "RHI/Texture/ITexture.h"
-#include "RHI/IDepthBuffer.h"
+#include "RHI/Buffer/IDepthBuffer.h"
 #include "Utilities/DebuggingHelper.h"
 
 #include <algorithm>

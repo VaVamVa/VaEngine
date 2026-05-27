@@ -5,7 +5,7 @@
 #include "Render/DebugTextRenderer.h"
 #include "Render/DebugLineRenderer.h"
 
-#include "RHI/IBuffer.h"
+#include "RHI/Buffer/IBuffer.h"
 #include "RHI/Shader/IShader.h"
 #include "RHI/Texture/ITexture.h"
 #include "RHI/Pipeline/IBindingLayout.h"

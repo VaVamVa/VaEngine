@@ -12,7 +12,7 @@
 
 #include "Mesh/IMesh.h"
 #include "RHI/Texture/ITexture.h"
-#include "RHI/IDepthBuffer.h"
+#include "RHI/Buffer/IDepthBuffer.h"
 #include "Utilities/DebuggingHelper.h"
 
 #include <algorithm>
@@ -167,7 +167,7 @@ struct TransparentPass : IRenderPass
 
         passDesc.depthStencil.view            = depthBuffer->GetView();
         passDesc.depthStencil.loadAction      = ELoadAction::Load;
-        passDesc.depthStencil.storeAction     = EStoreAction::DontCare;
+        passDesc.depthStencil.storeAction     = EStoreAction::Store;
 
         cmdList->BeginRenderPass(passDesc);
         cmdList->SetViewport(0.0f, 0.0f,
@@ -306,7 +306,7 @@ void ForwardRenderer::Initialize(IRenderDevice* device, const ShaderDesc& shader
         .shader           = shader.get(),
         .vertexInputs     = inputs,
         .vertexInputCount = 8,
-        .rtvFormat        = EPixelFormat::R8G8B8A8_UNORM,
+        .rtvFormats       = { EPixelFormat::R8G8B8A8_UNORM },
         .dsvFormat        = EPixelFormat::D24_UNORM_S8_UINT,
         .depthEnable      = true,
         .bindingLayout    = bindingLayout.get()
@@ -345,18 +345,34 @@ void ForwardRenderer::Initialize(IRenderDevice* device, const ShaderDesc& shader
     material = std::make_unique<Material>();
 }
 
-void ForwardRenderer::AddPasses(RenderGraph& graph, const FrameOutput& output, const RenderScene& /*scene*/)
+void ForwardRenderer::AddOpaquePasses(RenderGraph& graph, const FrameOutput& output, const RenderScene& /*scene*/)
 {
-    graph.AddPass<SkyPass>(this, output);  // 항상 먼저 — RT Clear + HDRi 렌더
-
+    graph.AddPass<SkyPass>(this, output);
     uint32_t depthHandle = graph.DeclareTransientDepth({
         output.width, output.height, EPixelFormat::D24_UNORM_S8_UINT
     });
-    graph.AddPass<ForwardPass>(this, output, depthHandle);     // [Pass 1] Opaque
-    graph.AddPass<TransparentPass>(this, output, depthHandle); // [Pass 2] Transparent
+    graph.AddPass<ForwardPass>(this, output, depthHandle);
+}
 
+void ForwardRenderer::AddTransparentPasses(RenderGraph& graph, const FrameOutput& output)
+{
+    uint32_t depthHandle = graph.DeclareTransientDepth({
+        output.width, output.height, EPixelFormat::D24_UNORM_S8_UINT
+    });
+    graph.AddPass<TransparentPass>(this, output, depthHandle);
+}
+
+void ForwardRenderer::AddDebugTextPasses(RenderGraph& graph, const FrameOutput& output)
+{
     if (debugTextRenderer)
         graph.AddPass<DebugTextPass>(this, output);
+}
+
+void ForwardRenderer::AddPasses(RenderGraph& graph, const FrameOutput& output, const RenderScene& scene)
+{
+    AddOpaquePasses(graph, output, scene);
+    AddTransparentPasses(graph, output);
+    AddDebugTextPasses(graph, output);
 }
 
 void ForwardRenderer::InitializeSky(IRenderDevice* device, const ShaderDesc& skyShaderDesc)
@@ -375,7 +391,7 @@ void ForwardRenderer::InitializeSky(IRenderDevice* device, const ShaderDesc& sky
         .shader           = skyShader.get(),
         .vertexInputs     = nullptr,
         .vertexInputCount = 0,
-        .rtvFormat        = EPixelFormat::R8G8B8A8_UNORM,
+        .rtvFormats       = { EPixelFormat::R16G16B16A16_FLOAT },
         .dsvFormat        = EPixelFormat::Unknown,
         .cullMode         = ECullMode::None,
         .blendMode        = EBlendMode::Opaque,
@@ -425,16 +441,14 @@ void ForwardRenderer::Render(ICommandList* cmdList, const RenderScene& scene, bo
 {
     const CameraData& cam = scene.GetCamera();
 
-    // ── 프레임 당 1회: viewProj 업로드 (root param 0 → b0) ──────────────
+    if (!isTransparentPass)
     {
+        // ── Opaque pass에서만 업로드 (Transparent pass는 동일 데이터 재사용) ──────
         Matrix4x4 vp = cam.view * cam.proj;
         ViewProjData vpdata = {};
         std::memcpy(vpdata.viewProj, vp.m, sizeof(vpdata.viewProj));
         viewProjBuffer->Upload(&vpdata, sizeof(vpdata));
-    }
 
-    // ── 프레임 당 1회: 조명 + 재질 업로드 (root param 1 → b2) ────────────
-    {
         const LightingState& lighting = scene.GetLighting();
         LightsBufferData ldata = {};
         ldata.dirLight = lighting.dirLight;
@@ -473,7 +487,7 @@ void ForwardRenderer::Render(ICommandList* cmdList, const RenderScene& scene, bo
     for (const RenderCommand& cmd : commands)
     {
         // 1. 일반 메쉬만 처리 (SkinnedMesh는 AnimationRenderer가 담당)
-        if (!cmd.mesh || cmd.skinnedMesh)
+        if (!cmd.mesh)
             continue;
 
         // 2. 패스에 따른 필터링 (비트 연산으로 translucent 여부 확인)

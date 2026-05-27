@@ -319,7 +319,7 @@ Shadow Map 생성 패스(ShadowPass)는 GBufferPass 이전에 실행.
 
 | 단계 | 작업 | 선행 조건 | 상태 |
 |---|---|---|---|
-| **0** | RHI 확장 — `IColorBuffer` / `ITextureUAV GetRTV()` / `IDepthBuffer BindSRV()` / `EPixelFormat` / `PipelineStateDesc` MRT | 없음 | 미착수 |
+| **0** | RHI 확장 — `IColorBuffer` / `ITextureUAV GetRTV()` / `IDepthBuffer BindSRV()` / `EPixelFormat` / `PipelineStateDesc` MRT | 없음 | ✅ 완료 |
 | **1** | G-Buffer 포맷 확정 + RT 생성 (`IColorBuffer` 활용) | 단계 0 | 미착수 |
 | **2** | GBufferPass 셰이더 작성 (Static mesh only) | 단계 1 | 미착수 |
 | **3** | DeferredLighting Compute 셰이더 작성 (Directional Light만) | 단계 2 | 미착수 |
@@ -380,12 +380,12 @@ Shadow Map 생성 패스(ShadowPass)는 GBufferPass 이전에 실행.
 
 | 항목 | 파일 | 상태 |
 |---|---|---|
-| `R16G16B16A16_FLOAT` 포맷 추가 | `Common_RHI.h` | 미착수 |
-| `PipelineStateDesc` MRT 지원 | `PipelineDesc.h` | 미착수 |
-| 신규 `IColorBuffer` 인터페이스 + DX12 구현 | `IColorBuffer.h`, `ColorBuffer_DirectX.h/.cpp` | 미착수 |
-| `IRenderDevice::CreateColorBuffer` 팩토리 | `IRenderDevice.h` + DX12 구현 | 미착수 |
-| `ITextureUAV`에 `GetRTV()` 추가 (HDR Output RT 바인딩용) | `ITextureUAV.h`, `TextureUAV_DirectX.h/.cpp` | 미착수 |
-| `IDepthBuffer`에 `BindSRV()` 추가 + typeless 포맷으로 생성 | `IDepthBuffer.h`, `DepthBuffer_DirectX.h/.cpp` | 미착수 |
+| `R16G16B16A16_FLOAT` 포맷 추가 | `Common_RHI.h` | ✅ 완료 |
+| `PipelineStateDesc` MRT 지원 | `PipelineDesc.h` | ✅ 완료 |
+| 신규 `IColorBuffer` 인터페이스 + DX12 구현 | `IColorBuffer.h`, `ColorBuffer_DirectX.h/.cpp` | ✅ 완료 |
+| `IRenderDevice::CreateColorBuffer` 팩토리 | `IRenderDevice.h` + DX12 구현 | ✅ 완료 |
+| `ITextureUAV`에 `GetRTV()` 추가 (HDR Output RT 바인딩용) | `ITextureUAV.h`, `TextureUAV_DirectX.h/.cpp` | ✅ 완료 |
+| `IDepthBuffer`에 `BindSRV()` 추가 + typeless 포맷으로 생성 | `IDepthBuffer.h`, `DepthBuffer_DirectX.h/.cpp` | ✅ 완료 |
 
 **확인된 기존 지원 현황:**
 

@@ -3,6 +3,8 @@
 #include "RHI/IRenderDevice.h"
 #include "Common_DirectX.h"
 
+#include <functional>
+
 class RenderDevice_DirectX : public IRenderDevice
 {
 public:
@@ -24,6 +26,7 @@ public:
 	std::unique_ptr<ITexture2DArray> CreateTexture2DArray() override;
 	std::unique_ptr<ITextureUAV>     CreateTextureUAV() override;
 	std::unique_ptr<IDepthBuffer>    CreateDepthBuffer(uint32_t width, uint32_t height, EPixelFormat format) override;
+	std::unique_ptr<IColorBuffer>    CreateColorBuffer(EPixelFormat format, uint32_t width, uint32_t height) override;
 	std::unique_ptr<IResourceView>   CreateBufferSRV(IBuffer* buffer, uint32_t numElements, uint32_t strideBytes) override;
 	std::unique_ptr<IResourceView>   CreateBufferUAV(IBuffer* buffer, uint32_t numElements, uint32_t strideBytes) override;
 
@@ -38,11 +41,15 @@ public:
 	};
 	SRVDescriptor AllocateSRVDescriptor();
 
+	// 복사 명령을 ICommandList 람다로 받아 즉시 실행하고 GPU 완료까지 대기
+	void ImmediateSubmit(std::function<void(ICommandList*)> recordFn) override;
+
 private:
 	void EnableDebugLayer();
 	void CreateFactory();
 	void PickAdapter();
 	void CreateDevice();
+	void CreateUploadInfra();
 
 private:
 	ComPtr<IDXGIFactory6>        factory;
@@ -53,4 +60,12 @@ private:
 	uint32_t                     srvDescriptorSize = 0;
 	uint32_t                     srvAllocIndex     = 0;
 	static constexpr uint32_t    GLOBAL_SRV_HEAP_SIZE = 1024;
+
+	// Upload 전용 커맨드 인프라 (Initialize 시 1회 생성, 이후 재사용)
+	ComPtr<ID3D12CommandQueue>        uploadQueue;
+	ComPtr<ID3D12CommandAllocator>    uploadAlloc;
+	ComPtr<ID3D12GraphicsCommandList> uploadCmdList;
+	ComPtr<ID3D12Fence>               uploadFence;
+	uint64_t                          uploadFenceValue = 0;
+	HANDLE                            uploadFenceEvent = nullptr;
 };

@@ -52,6 +52,7 @@ void VaProgramName::OnInitialize(IRenderDevice* device)
 	cube = new WO_Cube();
 	cube->Initialize(device);
 	cube->transform.SetPosition(Vector3(0.f, 6.f, 0.f));
+	cube->renderDesc.layer = 1;
 	VA_LOG("Asset", "WO_Cube initialized");
 
 	tower = new WO_Tower();

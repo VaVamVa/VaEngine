@@ -33,6 +33,15 @@ struct LightingState
 using RenderSortKey = uint64_t;
 using SceneObjectID = uint64_t;
 
+// Client(Application)가 오브젝트별로 설정하는 렌더링 속성.
+// depth·translucent·pass 등 Engine이 자동 결정하는 값은 포함하지 않는다.
+struct RenderObjectDesc
+{
+	uint8_t       layer      = 0;   // 렌더링 레이어 (0-15)
+	uint16_t      materialID = 0;   // PSO 배칭용 (향후 확장)
+	SceneObjectID objectID   = 0;   // 피킹/선택용 ID
+};
+
 struct SortKeyDesc
 {
 	uint8_t  layer       = 0;     // 0-15: 렌더링 레이어
@@ -80,18 +89,20 @@ struct CameraData
 	Matrix4x4 view;
 	Matrix4x4 proj;
 	float     eyePos[3] = {};
+	float     farZ      = 1000.0f;
 };
 
 class RenderScene
 {
 public:
-	void SetCamera(const Matrix4x4& view, const Matrix4x4& proj, const Vector3& eye = {})
+	void SetCamera(const Matrix4x4& view, const Matrix4x4& proj, const Vector3& eye = {}, float farZ = 1000.0f)
 	{
 		camera.view       = view;
 		camera.proj       = proj;
 		camera.eyePos[0]  = eye.x;
 		camera.eyePos[1]  = eye.y;
 		camera.eyePos[2]  = eye.z;
+		camera.farZ       = farZ;
 	}
 
 	void AddCommand(const RenderCommand& cmd)
@@ -100,14 +111,15 @@ public:
 	}
 
 
-	void AddMesh(IMesh* mesh, const Matrix4x4& worldMatrix, ITexture* texture = nullptr, SceneObjectID id = 0, uint8_t layer = 0)
+	void AddMesh(IMesh* mesh, const Matrix4x4& worldMatrix,
+	             ITexture* texture = nullptr, const RenderObjectDesc& desc = {})
 	{
 		RenderCommand cmd;
-		cmd.objectID    = id;
+		cmd.objectID    = desc.objectID;
 		cmd.mesh        = mesh;
 		cmd.worldMatrix = worldMatrix;
 		cmd.texture     = texture;
-		cmd.sortKey     = CalculateSortKey(worldMatrix, texture, layer);
+		cmd.sortKey     = CalculateSortKey(worldMatrix, texture, desc.layer, desc.materialID);
 		commands.push_back(cmd);
 	}
 
@@ -131,16 +143,18 @@ public:
 
 	void AddSkinnedMesh(SkinnedMesh* mesh, const Matrix4x4& worldMatrix,
 	                    ITexture* texture, ITexture2DArray* transformsMap,
-	                    IBuffer* tweenBuffer, uint32_t instanceCount = 1, uint8_t layer = 0)
+	                    IBuffer* tweenBuffer, uint32_t instanceCount = 1,
+	                    const RenderObjectDesc& desc = {})
 	{
 		RenderCommand cmd;
+		cmd.objectID      = desc.objectID;
 		cmd.skinnedMesh   = mesh;
 		cmd.texture       = texture;
 		cmd.transformsMap = transformsMap;
 		cmd.tweenBuffer   = tweenBuffer;
 		cmd.worldMatrix   = worldMatrix;
 		cmd.instanceCount = instanceCount;
-		cmd.sortKey       = CalculateSortKey(worldMatrix, texture, layer);
+		cmd.sortKey       = CalculateSortKey(worldMatrix, texture, desc.layer, desc.materialID);
 		commands.push_back(cmd);
 	}
 
@@ -160,22 +174,23 @@ public:
 	ITexture*                                GetSkybox()          const { return skyTexture; }
 
 private:
-	RenderSortKey CalculateSortKey(const Matrix4x4& worldMatrix, ITexture* texture, uint8_t layer) const
+	RenderSortKey CalculateSortKey(const Matrix4x4& worldMatrix, ITexture* texture,
+	                               uint8_t layer, uint16_t materialID = 0) const
 	{
 		SortKeyDesc desc;
-		
+
 		// 1. Layer & Translucency
 		desc.layer       = layer;
 		desc.translucent = (texture != nullptr && texture->HasAlpha());
 		desc.pass        = 0;
-		desc.materialID  = 0;
+		desc.materialID  = materialID;
 
 		// 2. Depth calculation (distance from eye)
 		Vector3 objPos = { worldMatrix.m[3][0], worldMatrix.m[3][1], worldMatrix.m[3][2] };
 		Vector3 camPos = { camera.eyePos[0], camera.eyePos[1], camera.eyePos[2] };
 		
 		float dist = Vector3::Distance(objPos, camPos);
-		desc.depth = std::clamp(dist / 100.0f, 0.0f, 1.0f); // 0.1~100 range normalized
+		desc.depth = std::clamp(dist / camera.farZ, 0.0f, 1.0f);
 
 		return MakeSortKey(desc);
 	}

@@ -5,7 +5,7 @@
 #include "Render/DebugTextRenderer.h"
 #include "Render/DebugLineRenderer.h"
 
-#include "RHI/IBuffer.h"
+#include "RHI/Buffer/IBuffer.h"
 #include "RHI/Shader/IShader.h"
 #include "RHI/Texture/ITexture.h"
 #include "RHI/Pipeline/IBindingLayout.h"
@@ -22,7 +22,10 @@ public:
 	void InitializeDebugText(IRenderDevice* device, const ShaderDesc& glyphShaderDesc, const char* ttfPath);
 	void InitializeDebugLines(IRenderDevice* device, const ShaderDesc& lineShaderDesc);
 	void AddPasses(RenderGraph& graph, const FrameOutput& output, const RenderScene& scene) override;
+	void AddOpaquePasses(RenderGraph& graph, const FrameOutput& output, const RenderScene& scene);
+	void AddTransparentPasses(RenderGraph& graph, const FrameOutput& output);
 	void AddDebugLinePasses(RenderGraph& graph, const FrameOutput& output);
+	void AddDebugTextPasses(RenderGraph& graph, const FrameOutput& output);
 	void Render(ICommandList* cmdList, const RenderScene& scene, bool isTransparentPass);
 	void RenderSky(ICommandList* cmdList, const RenderScene& scene);
 	void RenderDebugLines(ICommandList* cmdList, const RenderScene& scene);

@@ -7,7 +7,7 @@
 #include "Scene/RenderScene.h"
 
 #include "RHI/IRenderDevice.h"
-#include "RHI/IBuffer.h"
+#include "RHI/Buffer/IBuffer.h"
 #include "RHI/Common_RHI.h"
 #include "RHI/Texture/ITexture.h"
 #include "RHI/Texture/ITexture2DArray.h"
@@ -175,7 +175,8 @@ void WorldAnimatedModel::Impl_AddToScene(RenderScene& scene) const
             texture.get(),
             transformsMap.get(),
             tweenBuffer.get(),
-            count
+            count,
+            renderDesc
         );
     }
 }

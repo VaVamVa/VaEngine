@@ -1,6 +1,6 @@
 #pragma once
 
-#include "RHI/IBuffer.h"
+#include "RHI/Buffer/IBuffer.h"
 #include "RHI/DirectX/Common_DirectX.h"
 
 class Buffer_DirectX : public IBuffer

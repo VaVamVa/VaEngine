@@ -1,9 +1,8 @@
 #pragma once
 
 #include "Interfaces/IExecute.h"
-#include "Render/ForwardRenderer.h"
+#include "Render/SceneRenderer.h"
 #include "Render/RenderGraph.h"
-#include "Render/AnimationRenderer.h"
 
 #include "RHI/IRenderDevice.h"
 #include "RHI/ICommandQueue.h"
@@ -63,7 +62,6 @@ private:
 	std::unique_ptr<ITime>           time;
 	std::unique_ptr<TimerSystem>     timerSystem;
 
-	ForwardRenderer                  renderer;
-	AnimationRenderer                animationRenderer;
+	SceneRenderer                    sceneRenderer;
 	RenderGraph                      renderGraph;
 };
