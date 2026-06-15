@@ -235,12 +235,6 @@ void AnimationRenderer::AddGraphicsPasses(RenderGraph& graph, const FrameOutput&
     graph.AddPass<AnimationPass>(this, output, depthHandle, uniqueMeshes);
 }
 
-void AnimationRenderer::AddPasses(RenderGraph& graph, const FrameOutput& output, const RenderScene& scene)
-{
-    auto meshes = AddComputePasses(graph, scene);
-    AddGraphicsPasses(graph, output, meshes);
-}
-
 void AnimationRenderer::Render(ICommandList* cmdList, const RenderScene& scene)
 {
     const auto& cmds = scene.GetCommands();

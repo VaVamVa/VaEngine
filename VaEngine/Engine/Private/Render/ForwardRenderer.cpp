@@ -142,13 +142,10 @@ struct ForwardPass : IRenderPass
 
 struct TransparentPass : IRenderPass
 {
-    TransparentPass(ForwardRenderer* renderer, const FrameOutput& output, uint32_t depthHandle)
-        : renderer(renderer), output(output), depthHandle(depthHandle) {}
+    TransparentPass(ForwardRenderer* renderer, const FrameOutput& output, IDepthBuffer* sharedDepth)
+        : renderer(renderer), output(output), depthBuffer(sharedDepth) {}
 
-    void OnCompile(RenderGraph& graph) override
-    {
-        depthBuffer = graph.GetTransientDepth(depthHandle);
-    }
+    void OnCompile(RenderGraph& /*graph*/) override {}
 
     void DeclareResources(std::vector<PassResourceDecl>& reads,
                           std::vector<PassResourceDecl>& writes) const override
@@ -185,7 +182,6 @@ struct TransparentPass : IRenderPass
 
     ForwardRenderer* renderer;
     FrameOutput      output;
-    uint32_t         depthHandle;
     IDepthBuffer*    depthBuffer = nullptr;
 };
 
@@ -313,6 +309,10 @@ void ForwardRenderer::Initialize(IRenderDevice* device, const ShaderDesc& shader
     };
     pipelineState = device->CreatePipelineState(psoDesc);
 
+    PipelineStateDesc transparentPsoDesc = psoDesc;
+    transparentPsoDesc.blendMode = EBlendMode::AlphaBlend;
+    transparentPipelineState = device->CreatePipelineState(transparentPsoDesc);
+
     viewProjBuffer = device->CreateBuffer({
         .size   = sizeof(ViewProjData),
         .usage  = EBufferUsage::ConstantBuffer,
@@ -354,25 +354,15 @@ void ForwardRenderer::AddOpaquePasses(RenderGraph& graph, const FrameOutput& out
     graph.AddPass<ForwardPass>(this, output, depthHandle);
 }
 
-void ForwardRenderer::AddTransparentPasses(RenderGraph& graph, const FrameOutput& output)
+void ForwardRenderer::AddTransparentPasses(RenderGraph& graph, const FrameOutput& output, IDepthBuffer* sharedDepth)
 {
-    uint32_t depthHandle = graph.DeclareTransientDepth({
-        output.width, output.height, EPixelFormat::D24_UNORM_S8_UINT
-    });
-    graph.AddPass<TransparentPass>(this, output, depthHandle);
+    graph.AddPass<TransparentPass>(this, output, sharedDepth);
 }
 
 void ForwardRenderer::AddDebugTextPasses(RenderGraph& graph, const FrameOutput& output)
 {
     if (debugTextRenderer)
         graph.AddPass<DebugTextPass>(this, output);
-}
-
-void ForwardRenderer::AddPasses(RenderGraph& graph, const FrameOutput& output, const RenderScene& scene)
-{
-    AddOpaquePasses(graph, output, scene);
-    AddTransparentPasses(graph, output);
-    AddDebugTextPasses(graph, output);
 }
 
 void ForwardRenderer::InitializeSky(IRenderDevice* device, const ShaderDesc& skyShaderDesc)
@@ -467,8 +457,10 @@ void ForwardRenderer::Render(ICommandList* cmdList, const RenderScene& scene, bo
         lightsBuffer->Upload(&ldata, sizeof(ldata));
     }
 
-    pipelineState->Bind(cmdList);
-    // TODO: if (isTransparentPass) transparentPSO->Bind(cmdList);
+    if (isTransparentPass)
+        transparentPipelineState->Bind(cmdList);
+    else
+        pipelineState->Bind(cmdList);
 
     cmdList->SetConstantBuffer(viewProjBuffer.get(), 0);  // root param 0 → b0
     cmdList->SetConstantBuffer(lightsBuffer.get(), 1);    // root param 1 → b2

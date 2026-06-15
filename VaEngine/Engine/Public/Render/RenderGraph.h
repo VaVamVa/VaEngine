@@ -21,6 +21,17 @@ struct TransientDepthDesc
 	EPixelFormat format;
 };
 
+// 프레임별 출력 대상 정보 (스왑체인 백버퍼 등) — Execute.cpp 에서 RenderScene과 함께 RenderGraph::Execute에 전달
+struct FrameOutput
+{
+	IRHIResource* backBuffer = nullptr;
+	IResourceView* backBufferView = nullptr;
+	float          clearColor[4] = {};
+	uint32_t       width = 1280;
+	uint32_t       height = 720;
+};
+
+
 class RenderGraph
 {
 public:

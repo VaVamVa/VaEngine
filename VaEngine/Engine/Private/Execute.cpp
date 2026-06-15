@@ -8,7 +8,6 @@
 #include "RHI/Shader/IShader.h"
 
 #include "Demo/HelloCompute.h"
-#include "Render/IRenderer.h"
 
 #include "Utilities/Locator.h"
 #include "Utilities/DebuggingHelper.h"

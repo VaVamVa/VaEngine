@@ -1,5 +1,7 @@
 #pragma once
 
+#include "RHI/Pipeline/PipelineDesc.h"
+
 // GPU 레이아웃 — Lighting.hlsli Material 구조체와 일치 (64 bytes)
 struct MaterialData
 {
@@ -14,10 +16,12 @@ class IMaterial
 public:
     virtual ~IMaterial() = default;
 
-    virtual const MaterialData& GetData() const = 0;
+    virtual const MaterialData& GetData()      const = 0;
+    virtual EBlendMode          GetBlendMode() const = 0;
 
-    virtual void SetAmbient (float r, float g, float b, float a = 1.0f) = 0;
-    virtual void SetDiffuse (float r, float g, float b, float a = 1.0f) = 0;
-    virtual void SetSpecular(float r, float g, float b, float shininess) = 0;
-    virtual void SetReflect (float r, float g, float b, float a = 1.0f) = 0;
+    virtual void SetAmbient  (float r, float g, float b, float a = 1.0f) = 0;
+    virtual void SetDiffuse  (float r, float g, float b, float a = 1.0f) = 0;
+    virtual void SetSpecular (float r, float g, float b, float shininess) = 0;
+    virtual void SetReflect  (float r, float g, float b, float a = 1.0f) = 0;
+    virtual void SetBlendMode(EBlendMode mode) = 0;
 };

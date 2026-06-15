@@ -207,8 +207,8 @@ void SceneRenderer::AddPasses(RenderGraph& graph, const FrameOutput& output, con
     // 5. Blit → backBuffer (hdrOut SRV → backBuffer RTV, Clear)
     graph.AddPass<DeferredBlitPass>(blitPSO.get(), hdrOut, output);
 
-    // 6. Transparent → backBuffer (Load)
-    forwardRenderer.AddTransparentPasses(graph, output);
+    // 6. Transparent → backBuffer (Load, shared depth from GBufferPass)
+    forwardRenderer.AddTransparentPasses(graph, output, depth.get());
 
     // 7. Debug Lines → backBuffer
     forwardRenderer.AddDebugLinePasses(graph, output);

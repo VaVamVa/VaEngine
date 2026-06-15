@@ -5,7 +5,8 @@
 class Material : public IMaterial
 {
 public:
-    const MaterialData& GetData() const override { return data; }
+    const MaterialData& GetData()      const override { return data; }
+    EBlendMode          GetBlendMode() const override { return blendMode; }
 
     void SetAmbient(float r, float g, float b, float a) override
         { data.ambient[0]=r; data.ambient[1]=g; data.ambient[2]=b; data.ambient[3]=a; }
@@ -19,6 +20,9 @@ public:
     void SetReflect(float r, float g, float b, float a) override
         { data.reflect[0]=r; data.reflect[1]=g; data.reflect[2]=b; data.reflect[3]=a; }
 
+    void SetBlendMode(EBlendMode mode) override { blendMode = mode; }
+
 private:
     MaterialData data;
+    EBlendMode   blendMode = EBlendMode::Opaque;
 };

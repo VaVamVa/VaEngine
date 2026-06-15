@@ -16,8 +16,8 @@ public:
 	std::unique_ptr<IFence>			CreateFence() override;
 	std::unique_ptr<ICommandAlloc>	CreateCommandAllocator(const CommandAllocDesc& desc) override;
 	std::unique_ptr<ICommandList>	CreateCommandList(const CommandListDesc& desc) override;
-	std::unique_ptr<IBuffer>  CreateBuffer(const BufferDesc& desc) override;
-	std::unique_ptr<IShader>  CreateShader(const ShaderDesc& desc) override;
+	std::unique_ptr<IBuffer>		CreateBuffer(const BufferDesc& desc) override;
+	std::unique_ptr<IShader>		CreateShader(const ShaderDesc& desc) override;
 	std::unique_ptr<IBindingLayout>  CreateBindingLayout(const BindingEntry* entries, uint32_t count, bool isCompute = false) override;
 	std::unique_ptr<IPipelineState>  CreatePipelineState(const PipelineStateDesc& desc) override;
 	std::unique_ptr<IPipelineState>  CreateComputePipelineState(const ComputePipelineStateDesc& desc) override;

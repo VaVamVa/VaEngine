@@ -1,6 +1,7 @@
 #include "Object/WorldModel.h"
 
 #include "Asset/MeshLoader.h"
+#include "Render/Material.h"
 #include "RHI/IRenderDevice.h"
 #include "RHI/Texture/ITexture.h"
 #include "Scene/RenderScene.h"
@@ -20,6 +21,12 @@ static std::string ParseDiffuseTex(const std::string& matlPath)
             return line.substr(prefix.size());
     }
     return {};
+}
+
+void WorldModel::EnsureMaterial()
+{
+    if (!material)
+        material = std::make_unique<Material>();
 }
 
 void WorldModel::Initialize(IRenderDevice* device,
@@ -45,10 +52,12 @@ void WorldModel::Initialize(IRenderDevice* device,
 
     texture = device->CreateTexture();
     texture->LoadFromFile(device, spath.c_str());
+
+    EnsureMaterial();
 }
 
 void WorldModel::Impl_AddToScene(RenderScene& scene) const
 {
     for (const auto& mesh : meshes)
-        scene.AddMesh(mesh.get(), transform.GetMatrix(), texture.get(), renderDesc);
+        scene.AddMesh(mesh.get(), transform.GetMatrix(), texture.get(), material.get(), renderDesc);
 }

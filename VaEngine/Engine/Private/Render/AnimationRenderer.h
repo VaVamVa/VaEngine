@@ -1,6 +1,5 @@
 #pragma once
 
-#include "Render/IRenderer.h"
 #include "Render/IMaterial.h"
 #include "Animation/AnimController.h"
 
@@ -14,14 +13,16 @@
 #include <memory>
 #include <vector>
 
+class IRenderDevice;
+class RenderGraph;
+struct FrameOutput;
 class RenderScene;
 class SkinnedMesh;
 
-class AnimationRenderer : public IRenderer
+class AnimationRenderer
 {
 public:
-    void Initialize(IRenderDevice* device, const ShaderDesc& shaderDesc) override;
-    void AddPasses(RenderGraph& graph, const FrameOutput& output, const RenderScene& scene) override;
+    void Initialize(IRenderDevice* device, const ShaderDesc& shaderDesc);
     std::vector<SkinnedMesh*> AddComputePasses(RenderGraph& graph, const RenderScene& scene);
     void AddGraphicsPasses(RenderGraph& graph, const FrameOutput& output,
                            const std::vector<SkinnedMesh*>& uniqueMeshes);

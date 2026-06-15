@@ -23,10 +23,13 @@ public:
 
     const std::vector<std::unique_ptr<MeshPrimitive>>& GetMeshes()  const { return meshes;  }
     ITexture*                                          GetTexture() const { return texture.get(); }
+    IMaterial*                                         GetMaterial() const { return material.get(); }
 
 protected:
+    void EnsureMaterial();
     void Impl_AddToScene(RenderScene& scene) const override;
 
     std::vector<std::unique_ptr<MeshPrimitive>> meshes;
     std::unique_ptr<ITexture>                   texture;
+    std::unique_ptr<IMaterial>                  material;
 };

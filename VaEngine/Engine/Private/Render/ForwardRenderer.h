@@ -1,6 +1,5 @@
 #pragma once
 
-#include "Render/IRenderer.h"
 #include "Render/IMaterial.h"
 #include "Render/DebugTextRenderer.h"
 #include "Render/DebugLineRenderer.h"
@@ -12,18 +11,21 @@
 #include "RHI/Pipeline/IPipelineState.h"
 
 #include <memory>
+class IRenderDevice;
+class RenderGraph;
+struct FrameOutput;
 class RenderScene;
+class IDepthBuffer;
 
-class ForwardRenderer : public IRenderer
+class ForwardRenderer
 {
 public:
-	void Initialize(IRenderDevice* device, const ShaderDesc& shaderDesc) override;
+	void Initialize(IRenderDevice* device, const ShaderDesc& shaderDesc);
 	void InitializeSky(IRenderDevice* device, const ShaderDesc& skyShaderDesc);
 	void InitializeDebugText(IRenderDevice* device, const ShaderDesc& glyphShaderDesc, const char* ttfPath);
 	void InitializeDebugLines(IRenderDevice* device, const ShaderDesc& lineShaderDesc);
-	void AddPasses(RenderGraph& graph, const FrameOutput& output, const RenderScene& scene) override;
 	void AddOpaquePasses(RenderGraph& graph, const FrameOutput& output, const RenderScene& scene);
-	void AddTransparentPasses(RenderGraph& graph, const FrameOutput& output);
+	void AddTransparentPasses(RenderGraph& graph, const FrameOutput& output, IDepthBuffer* sharedDepth);
 	void AddDebugLinePasses(RenderGraph& graph, const FrameOutput& output);
 	void AddDebugTextPasses(RenderGraph& graph, const FrameOutput& output);
 	void Render(ICommandList* cmdList, const RenderScene& scene, bool isTransparentPass);
@@ -38,6 +40,7 @@ private:
 	std::unique_ptr<IBindingLayout> bindingLayout;
 	std::unique_ptr<IShader>        shader;
 	std::unique_ptr<IPipelineState> pipelineState;
+	std::unique_ptr<IPipelineState> transparentPipelineState;
 	std::unique_ptr<IBuffer>        viewProjBuffer;  // b0: view * proj (per-frame)
 	std::unique_ptr<IBuffer>        lightsBuffer;    // b2: lights + material + eyePos
 	std::unique_ptr<IBuffer>        instanceBuffer;  // slot 1: per-instance world matrices

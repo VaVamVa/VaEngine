@@ -2,6 +2,7 @@
 
 #include "Math/Container.h"
 #include "Render/ILight.h"
+#include "Render/IMaterial.h"
 #include "Animation/AnimController.h"
 #include "Utilities/DebuggingHelper.h"
 #include "RHI/Texture/ITexture.h"
@@ -76,6 +77,7 @@ struct RenderCommand
 	IMesh*           mesh          = nullptr;
 	Matrix4x4        worldMatrix;
 	ITexture*        texture       = nullptr;
+	IMaterial*       material      = nullptr;
 
 	// Skinned Mesh Data (Optional)
 	SkinnedMesh*     skinnedMesh   = nullptr;
@@ -112,14 +114,16 @@ public:
 
 
 	void AddMesh(IMesh* mesh, const Matrix4x4& worldMatrix,
-	             ITexture* texture = nullptr, const RenderObjectDesc& desc = {})
+	             ITexture* texture = nullptr, IMaterial* material = nullptr,
+	             const RenderObjectDesc& desc = {})
 	{
 		RenderCommand cmd;
 		cmd.objectID    = desc.objectID;
 		cmd.mesh        = mesh;
 		cmd.worldMatrix = worldMatrix;
 		cmd.texture     = texture;
-		cmd.sortKey     = CalculateSortKey(worldMatrix, texture, desc.layer, desc.materialID);
+		cmd.material    = material;
+		cmd.sortKey     = CalculateSortKey(worldMatrix, material, desc.layer, desc.materialID);
 		commands.push_back(cmd);
 	}
 
@@ -154,7 +158,7 @@ public:
 		cmd.tweenBuffer   = tweenBuffer;
 		cmd.worldMatrix   = worldMatrix;
 		cmd.instanceCount = instanceCount;
-		cmd.sortKey       = CalculateSortKey(worldMatrix, texture, desc.layer, desc.materialID);
+		cmd.sortKey       = CalculateSortKey(worldMatrix, nullptr/*현재 WorldAnimatedModel 에는 Material 이 존재하지 않음*/, desc.layer, desc.materialID);
 		commands.push_back(cmd);
 	}
 
@@ -174,14 +178,14 @@ public:
 	ITexture*                                GetSkybox()          const { return skyTexture; }
 
 private:
-	RenderSortKey CalculateSortKey(const Matrix4x4& worldMatrix, ITexture* texture,
+	RenderSortKey CalculateSortKey(const Matrix4x4& worldMatrix, IMaterial* material,
 	                               uint8_t layer, uint16_t materialID = 0) const
 	{
 		SortKeyDesc desc;
 
 		// 1. Layer & Translucency
 		desc.layer       = layer;
-		desc.translucent = (texture != nullptr && texture->HasAlpha());
+		desc.translucent = (material != nullptr && material->GetBlendMode() != EBlendMode::Opaque);
 		desc.pass        = 0;
 		desc.materialID  = materialID;
 
