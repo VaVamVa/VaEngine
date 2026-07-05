@@ -2,7 +2,7 @@
 
 작성일: 2026-06-06  
 최종 수정: 2026-07-06  
-상태: Phase 4 완료 + 2-Pass 투명 렌더링 구현. Phase 5 (RenderCommand.texture 제거) 대기
+상태: **Phase 1~6 완료. Phase 7 (Normal Mapping) 대기**
 
 ---
 
@@ -45,29 +45,32 @@ Android: ForwardSceneRenderer  → ForwardLit_PS.glsl        (간소화 PBR)
 
 ---
 
-## 현재 상태 — 무엇이 문제인가
+## 해소된 문제 (Phase 1~6 완료)
 
-### G-Buffer와 IMaterial의 불일치
+### G-Buffer와 IMaterial 불일치 → 해소
 
 ```
-G-Buffer (GPU 현재):           IMaterial (CPU 현재):
-  RT0: Albedo(RGB) + AO(A)       ambient / diffuse
-  RT1: Normal(XYZ) + Rough(W)    specular / shininess   ← Phong
-  RT2: Metallic(R) + reserved    reflect
+Phase 6 이전 (Phong):           Phase 6 이후 (PBR):
+  IMaterial: ambient/diffuse       IMaterial: albedo/roughness/metallic/ao/emissive
+  HLSL: GBufferMaterialData(16B)   HLSL: CB_GBufferMaterial(b1, 48B)
+  하드코딩 roughness=0.5          MaterialData와 1:1 매핑
 ```
 
-GPU는 PBR 레이아웃을 이미 사용하고 있으나 CPU Material은 Phong 파라미터를 노출한다.  
-`GBufferMaterialData { roughness=0.5, metallic=0.0 }` 가 하드코딩되어 모든 오브젝트에 동일하게 적용된다.
+`Lighting.hlsli` 전면 교체 (D_GGX · F_Schlick · G_Smith · EvalBRDF).  
+`GBufferMaterial.hlsli` 신규 생성 — `CB_GBufferMaterial` b1 레지스터.  
+GBuffer / DeferredLighting / ForwardOpaque / AnimationDemo / Transparent 셰이더 PBR로 교체.
 
-### 텍스처 소유권 분리
+### 텍스처 소유권 분리 → 해소
 
-`RenderCommand.texture`(ITexture*)가 Material 밖에 존재한다. GBufferRenderer는 `cmd.texture`를 직접 읽는다. albedo가 Material과 분리되어 있어 Material 기반 제어가 불완전하다.
+`RenderCommand.texture` 필드 제거 (Phase 5).  
+모든 렌더러가 `cmd.material->GetAlbedoTexture()`로만 텍스처에 접근.  
+`AddMesh()` · `AddSkinnedMesh()` 시그니처에서 ITexture* 파라미터 제거.
 
-### Material GPU 버퍼 업로드 경쟁 조건
+### Material GPU 버퍼 업로드 경쟁 조건 → 해소
 
-GBufferRenderer의 `materialBuffer`는 Upload heap 단일 버퍼이며 매 프레임 동일 값으로 1회 업로드된다. per-group 방식으로 전환 시 CPU 명령 기록 중 같은 버퍼를 순서대로 덮어쓰면 GPU 실행 시점에 마지막 값만 남아 앞 그룹의 드로우 콜이 잘못된 재질 데이터를 읽는다.
-
-→ **해결: Material이 자신의 IBuffer를 영속 소유.** 변경 시에만 GPU 업로드 (dirty flag 패턴). GBufferRenderer는 `cmd.material->GetBuffer()`를 그룹 변경 시 바인딩.
+Material이 자신의 IBuffer를 영속 소유. Dirty flag 패턴 적용.  
+GBufferRenderer·ForwardRenderer·AnimationRenderer 모두 그룹 변경 시  
+`cmd.material->UpdateBufferIfDirty()` + `cmd.material->GetBuffer()` bind (b1) 순서 보장.
 
 ---
 
@@ -356,20 +359,30 @@ WorldObject::AddToScene(RenderScene&)
                            UpdateBufferIfDirty() + GetAlbedoTexture() 바인딩
                            GetBlendMode() → PSO 선택 (SelectForwardPSO 헬퍼)
 
-[ ] Phase 5 — RenderCommand.texture 제거 (렌더러 수정 완료 후)
-  [ ] ⑫ RenderCommand.texture 필드 제거
-  [ ] ⑬ AddMesh / AddSkinnedMesh 시그니처에서 ITexture* 파라미터 제거
+[완료] Phase 5 — RenderCommand.texture 제거
+  [x] ⑫ RenderCommand.texture 필드 제거
+  [x] ⑬ AddMesh / AddSkinnedMesh 시그니처에서 ITexture* 파라미터 제거
 
-[ ] Phase 6 — HLSL
-  [ ] ⑭ GBuffer_PS / GBufferSkinned_PS: MaterialData PBR 레이아웃 반영. Cutout clip()
-  [ ] ⑮ DeferredLighting_CS: 완전 PBR (Cook-Torrance GGX)
-  [ ] ⑯ ForwardOpaque_PS: PBR 파라미터 + CB_Lights MaterialData 분리
-  [ ] ⑰ ForwardUnlit_VS/PS: 신규 (ForwardRenderer.InitializeUnlit 연결)
+[완료] Phase 6 — HLSL Phong → PBR 전면 교체
+  [x] ⑭ GBuffer.hlsl / GBufferSkinned.hlsl: GBufferMaterial.hlsli include. Cutout clip(). PBR G-Buffer 출력
+  [x] ⑮ DeferredLighting.hlsl: 완전 PBR (Cook-Torrance GGX). EvalBRDF() 사용
+  [x] ⑯ ForwardOpaque.hlsl: PBR PSMain. CB_Lights에서 material 분리 (b1/b2 독립)
+  [x] ⑰' Common/Transparent.hlsli + DirectX/ForwardTransparent.hlsl 신규 (PBR 투명)
+       ※ ForwardUnlit 미구현 — Unlit 수요 발생 시 추가
+  [x] AnimationDemo.hlsl: PBR PSMain (스키닝 포함)
+  [x] Lighting.hlsli: PBR 구조체 + D_GGX · F_Schlick · G_Smith · EvalBRDF
+  [x] GBufferMaterial.hlsli: 신규. CB_GBufferMaterial (b1, 48B)
+  [x] 모든 렌더러 LightsBufferData MaterialData 필드 제거 (704B 정렬)
+
+  ※ 실제 구현과 계획의 차이
+  - 2-Pass 투명 렌더링(transparentBackFacePSO / transparentFrontFacePSO)은 Phase 4 확장으로 구현됨
+  - PBR ambient 상수는 IBL 미구현 상태에서 0.03 → 0.10으로 상향 조정 (임시)
+  - CB_Lights b2에서 material 필드 완전 분리 완료 (ForwardRenderer · AnimationRenderer · DeferredLightingRenderer)
 
 [ ] Phase 7 — Normal Mapping (별도 작업)
   [ ] ⑱ WorldModel normalTex 추가 → material->SetNormalTexture()
   [ ] ⑲ GBuffer binding layout 확장 (t1: normal map)
-  [ ] ⑳ GBuffer_PS normal map 샘플링
+  [ ] ⑳ GBuffer_PS / GBufferSkinned_PS normal map 샘플링 + TBN 행렬 계산
 ```
 
 ---
