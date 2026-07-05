@@ -2,6 +2,7 @@
 
 #include "Render/RenderGraph.h"
 #include "Render/IRenderPass.h"
+#include "Render/IMaterial.h"
 #include "Scene/RenderScene.h"
 
 #include "RHI/IRenderDevice.h"
@@ -20,13 +21,6 @@
 // ── GPU 상수 버퍼 레이아웃 ────────────────────────────────────────────────────
 
 struct GBufferViewProjData { float viewProj[16]; };          // b0 — 64 bytes
-
-struct GBufferMaterialData                                   // b1 — 16 bytes
-{
-    float roughness;
-    float metallic;
-    float _pad[2];
-};
 
 static constexpr uint32_t MAX_GB_INSTANCES = 1024;
 
@@ -85,7 +79,7 @@ struct GBufferPass : IRenderPass
                                 static_cast<int32_t>(renderer->GetHeight()));
 
         renderer->RenderGBuffer(cmdList, scene, skinnedMeshes);
-
+ 
         cmdList->EndRenderPass();
     }
 
@@ -148,15 +142,12 @@ void GBufferRenderer::Initialize(IRenderDevice* device, IDepthBuffer* sharedDept
     };
     pipelineState = device->CreatePipelineState(psoDesc);
 
+    PipelineStateDesc doubleSidedPsoDesc = psoDesc;
+    doubleSidedPsoDesc.cullMode = ECullMode::None;
+    doubleSidedPipelineState = device->CreatePipelineState(doubleSidedPsoDesc);
+
     viewProjBuffer = device->CreateBuffer({
         .size   = sizeof(GBufferViewProjData),
-        .usage  = EBufferUsage::ConstantBuffer,
-        .access = EMemoryAccess::Upload,
-        .stride = 0
-    });
-
-    materialBuffer = device->CreateBuffer({
-        .size   = sizeof(GBufferMaterialData),
         .usage  = EBufferUsage::ConstantBuffer,
         .access = EMemoryAccess::Upload,
         .stride = 0
@@ -215,6 +206,10 @@ void GBufferRenderer::InitializeSkinned(IRenderDevice* device, const ShaderDesc&
     };
     skinnedPipelineState = device->CreatePipelineState(psoDesc);
 
+    PipelineStateDesc doubleSidedSkinnedDesc = psoDesc;
+    doubleSidedSkinnedDesc.cullMode = ECullMode::None;
+    doubleSidedSkinnedPipelineState = device->CreatePipelineState(doubleSidedSkinnedDesc);
+
     skinnedInstanceBuffer = device->CreateBuffer({
         .size   = MAX_GB_INSTANCES * sizeof(Matrix4x4),
         .usage  = EBufferUsage::VertexBuffer,
@@ -237,27 +232,18 @@ void GBufferRenderer::RenderGBuffer(ICommandList* cmdList, const RenderScene& sc
 {
     const CameraData& cam = scene.GetCamera();
 
-    // ViewProj 업로드
-    Matrix4x4 vp = cam.view * cam.proj;
     GBufferViewProjData vpData;
-    std::memcpy(vpData.viewProj, vp.m, sizeof(vpData.viewProj));
+    std::memcpy(vpData.viewProj, (cam.view * cam.proj).m, sizeof(vpData.viewProj));
     viewProjBuffer->Upload(&vpData, sizeof(vpData));
 
-    // GBufferMaterial 업로드 (기본값 — 향후 per-mesh 재질로 교체)
-    GBufferMaterialData matData = { 0.5f, 0.0f, { 0.0f, 0.0f } };
-    materialBuffer->Upload(&matData, sizeof(matData));
-
-    pipelineState->Bind(cmdList);
-    cmdList->SetConstantBuffer(viewProjBuffer.get(), 0);   // root param 0 → b0
-    cmdList->SetConstantBuffer(materialBuffer.get(), 1);   // root param 1 → b1
     cmdList->SetPrimitiveTopology(EPrimitiveTopology::TriangleList);
 
     const auto& commands = scene.GetCommands();
     if (commands.empty())
         return;
 
-    // 불투명 정적 메시 처리
-    struct DrawGroup { IMesh* mesh; ITexture* tex; uint32_t count; };
+    // ── 불투명 정적 메시 ─────────────────────────────────────────────────────────
+    struct DrawGroup { IMesh* mesh; IMaterial* material; uint32_t count; };
     std::vector<DrawGroup> drawList;
     std::vector<Matrix4x4> allInstances;
     allInstances.reserve(commands.size());
@@ -265,67 +251,115 @@ void GBufferRenderer::RenderGBuffer(ICommandList* cmdList, const RenderScene& sc
     for (const RenderCommand& cmd : commands)
     {
         if (!cmd.mesh) continue;
-        bool translucent = (cmd.sortKey & (1ULL << 59)) != 0;
-        if (translucent) continue;
+        if (cmd.sortKey & (1ULL << 59)) continue;  // translucent — skip
 
-        ITexture* tex = cmd.texture ? cmd.texture : defaultTexture.get();
         if (!drawList.empty()
-            && drawList.back().mesh == cmd.mesh
-            && drawList.back().tex  == tex)
+            && drawList.back().mesh     == cmd.mesh
+            && drawList.back().material == cmd.material)
         {
             ++drawList.back().count;
         }
         else
         {
-            drawList.push_back({ cmd.mesh, tex, 1 });
+            drawList.push_back({ cmd.mesh, cmd.material, 1 });
         }
         allInstances.push_back(cmd.worldMatrix);
     }
 
     if (!drawList.empty())
     {
-    instanceBuffer->Upload(allInstances.data(), allInstances.size() * sizeof(Matrix4x4));
+        instanceBuffer->Upload(allInstances.data(), allInstances.size() * sizeof(Matrix4x4));
 
-    ITexture* boundTex   = nullptr;
-    uint32_t  byteOffset = 0;
-    for (auto& [mesh, tex, count] : drawList)
-    {
-        if (tex != boundTex)
+        IMaterial*      boundMat = nullptr;
+        IPipelineState* boundPSO = nullptr;
+        uint32_t        byteOffset = 0;
+
+        for (auto& [mesh, mat, count] : drawList)
         {
-            tex->Bind(cmdList, 2);   // root param 2 → t0
-            boundTex = tex;
+            // PSO 선택: DoubleSided ↔ BackFace
+            IPipelineState* pso = (mat && mat->GetCullMode() == ECullMode::None)
+                ? doubleSidedPipelineState.get()
+                : pipelineState.get();
+
+            if (pso != boundPSO)
+            {
+                pso->Bind(cmdList);
+                cmdList->SetConstantBuffer(viewProjBuffer.get(), 0);
+                boundPSO = pso;
+                boundMat = nullptr;  // root 바인딩 재설정 필요
+            }
+
+            if (mat != boundMat)
+            {
+                if (mat)
+                {
+                    mat->UpdateBufferIfDirty();
+                    cmdList->SetConstantBuffer(mat->GetBuffer(), 1);    // root 1 → b1
+                    ITexture* albedo = mat->GetAlbedoTexture();
+                    (albedo ? albedo : defaultTexture.get())->Bind(cmdList, 2);  // root 2 → t0
+                }
+                else
+                {
+                    defaultTexture->Bind(cmdList, 2);
+                }
+                boundMat = mat;
+            }
+
+            uint32_t clampedCount = std::min(count, MAX_GB_INSTANCES);
+            cmdList->SetVertexBufferAt(instanceBuffer.get(), 1,
+                                       static_cast<uint32_t>(sizeof(Matrix4x4)),
+                                       clampedCount * static_cast<uint32_t>(sizeof(Matrix4x4)),
+                                       byteOffset);
+            mesh->DrawInstanced(cmdList, clampedCount);
+            byteOffset += clampedCount * static_cast<uint32_t>(sizeof(Matrix4x4));
         }
-        uint32_t clampedCount = std::min(count, MAX_GB_INSTANCES);
-        cmdList->SetVertexBufferAt(instanceBuffer.get(), 1,
-                                   static_cast<uint32_t>(sizeof(Matrix4x4)),
-                                   clampedCount * static_cast<uint32_t>(sizeof(Matrix4x4)),
-                                   byteOffset);
-        mesh->DrawInstanced(cmdList, clampedCount);
-        byteOffset += clampedCount * static_cast<uint32_t>(sizeof(Matrix4x4));
     }
-    } // !drawList.empty()
 
     // ── 스키닝 메시 ─────────────────────────────────────────────────────────────
     if (skinnedMeshes.empty() || !skinnedPipelineState)
         return;
 
-    skinnedPipelineState->Bind(cmdList);
-    cmdList->SetConstantBuffer(viewProjBuffer.get(), 0);   // root 0 → b0
-    cmdList->SetConstantBuffer(materialBuffer.get(), 1);   // root 1 → b1
-    cmdList->SetPrimitiveTopology(EPrimitiveTopology::TriangleList);
+    IMaterial*      boundSkinnedMat = nullptr;
+    IPipelineState* boundSkinnedPSO = nullptr;
 
     for (const RenderCommand& cmd : commands)
     {
         if (!cmd.skinnedMesh)
             continue;
 
-        const uint32_t count = std::min(cmd.instanceCount, cmd.skinnedMesh->GetMaxInstances());
+        // PSO 선택
+        IPipelineState* pso = (cmd.material && cmd.material->GetCullMode() == ECullMode::None)
+            ? doubleSidedSkinnedPipelineState.get()
+            : skinnedPipelineState.get();
 
-        if (cmd.texture)
-            cmd.texture->Bind(cmdList, 2);              // root 2 → t0
+        if (pso != boundSkinnedPSO)
+        {
+            pso->Bind(cmdList);
+            cmdList->SetConstantBuffer(viewProjBuffer.get(), 0);
+            cmdList->SetPrimitiveTopology(EPrimitiveTopology::TriangleList);
+            boundSkinnedPSO = pso;
+            boundSkinnedMat = nullptr;
+        }
+
+        if (cmd.material != boundSkinnedMat)
+        {
+            if (cmd.material)
+            {
+                cmd.material->UpdateBufferIfDirty();
+                cmdList->SetConstantBuffer(cmd.material->GetBuffer(), 1);   // root 1 → b1
+                ITexture* albedo = cmd.material->GetAlbedoTexture();
+                (albedo ? albedo : defaultTexture.get())->Bind(cmdList, 2); // root 2 → t0
+            }
+            else
+            {
+                defaultTexture->Bind(cmdList, 2);
+            }
+            boundSkinnedMat = cmd.material;
+        }
 
         cmdList->SetGraphicsSRV(cmd.skinnedMesh->GetBonePaletteSRV(), 3);  // root 3 → t1
 
+        const uint32_t count = std::min(cmd.instanceCount, cmd.skinnedMesh->GetMaxInstances());
         skinnedInstanceBuffer->Upload(&cmd.worldMatrix, count * sizeof(Matrix4x4));
         cmdList->SetVertexBufferAt(skinnedInstanceBuffer.get(), 1,
                                    static_cast<uint32_t>(sizeof(Matrix4x4)),

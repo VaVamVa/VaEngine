@@ -21,14 +21,16 @@ class ForwardRenderer
 {
 public:
 	void Initialize(IRenderDevice* device, const ShaderDesc& shaderDesc);
+	void InitializeTransparent(IRenderDevice* device, const ShaderDesc& shaderDesc);
 	void InitializeSky(IRenderDevice* device, const ShaderDesc& skyShaderDesc);
 	void InitializeDebugText(IRenderDevice* device, const ShaderDesc& glyphShaderDesc, const char* ttfPath);
 	void InitializeDebugLines(IRenderDevice* device, const ShaderDesc& lineShaderDesc);
 	void AddOpaquePasses(RenderGraph& graph, const FrameOutput& output, const RenderScene& scene);
 	void AddTransparentPasses(RenderGraph& graph, const FrameOutput& output, IDepthBuffer* sharedDepth);
-	void AddDebugLinePasses(RenderGraph& graph, const FrameOutput& output);
+	void AddDebugLinePasses(RenderGraph& graph, const FrameOutput& output, IDepthBuffer* sharedDepth);
 	void AddDebugTextPasses(RenderGraph& graph, const FrameOutput& output);
-	void Render(ICommandList* cmdList, const RenderScene& scene, bool isTransparentPass);
+	void Render(ICommandList* cmdList, const RenderScene& scene);
+	void RenderTransparent(ICommandList* cmdList, const RenderScene& scene);
 	void RenderSky(ICommandList* cmdList, const RenderScene& scene);
 	void RenderDebugLines(ICommandList* cmdList, const RenderScene& scene);
 	void RenderDebugText(ICommandList* cmdList, const RenderScene& scene, uint32_t screenW, uint32_t screenH);
@@ -36,17 +38,25 @@ public:
 	IMaterial* GetMaterial() const { return material.get(); }
 
 private:
-	// Forward pass GPU resources
+	// [OIT 확장 지점] 비볼록 메시 / 오브젝트 간 교차 시 2-Pass 뒷면→앞면으로 정렬 오류 발생.
+	// 해결: Weighted Blended OIT (AccumBuffer Pre-Pass + Composite) 또는 A-Buffer (LinkedList UAV).
+	// RenderTransparent 내 두 Pass 사이에서 호출 예정.
+	void ResolveOIT(ICommandList* cmdList, const RenderScene& scene);
+
+	// Opaque pass GPU resources
 	std::unique_ptr<IBindingLayout> bindingLayout;
 	std::unique_ptr<IShader>        shader;
 	std::unique_ptr<IPipelineState> pipelineState;
-	std::unique_ptr<IPipelineState> transparentPipelineState;
 	std::unique_ptr<IBuffer>        viewProjBuffer;  // b0: view * proj (per-frame)
 	std::unique_ptr<IBuffer>        lightsBuffer;    // b2: lights + material + eyePos
 	std::unique_ptr<IBuffer>        instanceBuffer;  // slot 1: per-instance world matrices
 	std::unique_ptr<ITexture>       texture;
-
 	std::unique_ptr<IMaterial>      material;
+
+	// Transparent 2-Pass GPU resources
+	std::unique_ptr<IShader>        transparentShader;
+	std::unique_ptr<IPipelineState> transparentBackFacePSO;   // Pass1: CullMode::Front (뒷면)
+	std::unique_ptr<IPipelineState> transparentFrontFacePSO;  // Pass2: CullMode::Back  (앞면)
 
 	// Sky pass GPU resources
 	std::unique_ptr<IBindingLayout> skyBindingLayout;

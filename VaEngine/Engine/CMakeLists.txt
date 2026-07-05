@@ -141,7 +141,9 @@ if(USE_DIRECTX)
     set(_dx_shader_common_files
         "${_dx_shader_common}/Sampler.hlsli"
         "${_dx_shader_common}/Lighting.hlsli"
+        "${_dx_shader_common}/GBufferMaterial.hlsli"
         "${_dx_shader_common}/Global.hlsli"
+        "${_dx_shader_common}/Transparent.hlsli"
     )
 
     add_custom_command(
@@ -163,6 +165,28 @@ if(USE_DIRECTX)
             "${_dx_shader_src}/ForwardOpaque.hlsl"
             ${_dx_shader_common_files}
         COMMENT "셰이더 컴파일: ForwardOpaque"
+        VERBATIM
+    )
+
+    add_custom_command(
+        OUTPUT
+            "${_dx_shader_bin}/ForwardTransparent_VS.cso"
+            "${_dx_shader_bin}/ForwardTransparent_PS.cso"
+        COMMAND $<TARGET_FILE:VaShaderCompiler>
+                --target dx
+                --in "${_dx_shader_src}/ForwardTransparent.hlsl"
+                --stage vs --entry VSMain
+                --out "${_dx_shader_bin}/ForwardTransparent_VS.cso"
+        COMMAND $<TARGET_FILE:VaShaderCompiler>
+                --target dx
+                --in "${_dx_shader_src}/ForwardTransparent.hlsl"
+                --stage ps --entry PSMain
+                --out "${_dx_shader_bin}/ForwardTransparent_PS.cso"
+        DEPENDS
+            VaShaderCompiler
+            "${_dx_shader_src}/ForwardTransparent.hlsl"
+            ${_dx_shader_common_files}
+        COMMENT "셰이더 컴파일: ForwardTransparent"
         VERBATIM
     )
 
@@ -371,6 +395,8 @@ if(USE_DIRECTX)
     add_custom_target(CompileShaders DEPENDS
         "${_dx_shader_bin}/ForwardOpaque_VS.cso"
         "${_dx_shader_bin}/ForwardOpaque_PS.cso"
+        "${_dx_shader_bin}/ForwardTransparent_VS.cso"
+        "${_dx_shader_bin}/ForwardTransparent_PS.cso"
         "${_dx_shader_bin}/AnimationDemo_VS.cso"
         "${_dx_shader_bin}/AnimationDemo_PS.cso"
         "${_dx_shader_bin}/Sky_VS.cso"

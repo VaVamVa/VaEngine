@@ -15,8 +15,9 @@ class DepthBuffer_DirectX : public IDepthBuffer
 public:
     void Create(IRenderDevice* device, uint32_t width, uint32_t height, DXGI_FORMAT format);
 
-    IRHIResource*  GetResource() const override { return const_cast<DepthResource*>(&depthResource); }
-    IResourceView* GetView()     const override { return dsvView.get(); }
+    IRHIResource*  GetResource()         const override { return const_cast<DepthResource*>(&depthResource); }
+    IResourceView* GetView()             const override { return dsvView.get(); }
+    IResourceView* GetReadOnlyView()     const override { return readOnlyDsvView.get(); }
     void           BindSRV(ICommandList* cmdList, uint32_t slot, bool isCompute) override;
 
 private:
@@ -29,6 +30,8 @@ private:
     DepthResource                  depthResource;
     ComPtr<ID3D12DescriptorHeap>   dsvHeap;
     std::unique_ptr<IResourceView> dsvView;
+    ComPtr<ID3D12DescriptorHeap>   readOnlyDsvHeap;
+    std::unique_ptr<IResourceView> readOnlyDsvView;
 
     D3D12_GPU_DESCRIPTOR_HANDLE    srvGpuHandle  = {};
     std::unique_ptr<IResourceView> srvView;

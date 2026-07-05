@@ -1,7 +1,8 @@
 # Material 중심 렌더링 설계 계획서
 
 작성일: 2026-06-06  
-상태: 설계 확정, 구현 대기
+최종 수정: 2026-07-06  
+상태: Phase 4 완료 + 2-Pass 투명 렌더링 구현. Phase 5 (RenderCommand.texture 제거) 대기
 
 ---
 
@@ -330,45 +331,45 @@ WorldObject::AddToScene(RenderScene&)
 > 렌더러가 `cmd.texture`를 참조하는 상태에서 필드를 먼저 제거하면 컴파일 에러가 발생한다.
 
 ```
-Phase 1 — RHI 인프라
-  ① PipelineStateDesc.depthWrite 추가
-  ② RenderDevice_DirectX DepthWriteMask 반영
+[완료] Phase 1 — RHI 인프라
+  [x] ① PipelineStateDesc.depthWrite 추가
+  [x] ② RenderDevice_DirectX DepthWriteMask 반영
 
-Phase 2 — Material 재정의
-  ③ MaterialData 재정의 (Phong → PBR)
-  ④ IMaterial 인터페이스 전체 교체
-     · UpdateBufferIfDirty() 추가
-     · GetID() 추가 (Material 생성 시 정적 카운터로 고유 ID 부여)
-  ⑤ Material 구현체 (IBuffer 소유, dirty flag, 고유 ID)
+[완료] Phase 2 — Material 재정의
+  [x] ③ MaterialData 재정의 (Phong → PBR)
+  [x] ④ IMaterial 인터페이스 전체 교체
+       · UpdateBufferIfDirty() 추가
+       · GetID() 추가 (Material 생성 시 정적 카운터로 고유 ID 부여)
+  [x] ⑤ Material 구현체 (IBuffer 소유, dirty flag, 고유 ID)
 
-Phase 3 — Object·Scene 연결
-  ⑥ WorldModel: albedoTex → material->SetAlbedoTexture(). material->Initialize(device)
-  ⑦ WorldAnimatedModel: material 멤버 추가, texture 연결
-  ⑧ WO_Cube: material->Initialize(device) 추가
-  ⑨ RenderScene: CalculateSortKey → material->GetID()를 materialID로 사용
+[완료] Phase 3 — Object·Scene 연결
+  [x] ⑥ WorldModel: albedoTex → material->SetAlbedoTexture(). material->Initialize(device)
+  [x] ⑦ WorldAnimatedModel: material 멤버 추가, texture 연결
+  [x] ⑧ WO_Cube: material->Initialize(device) 추가
+  [x] ⑨ RenderScene: CalculateSortKey → material->GetID()를 materialID로 사용
 
-Phase 4 — 렌더러 반영 (texture 필드 제거 전에 완료)
-  ⑩ GBufferRenderer: DrawGroup 기준 (mesh, IMaterial*) 변경
-                      UpdateBufferIfDirty() + GetBuffer() + GetAlbedoTexture() 바인딩
-                      GetCullMode() → PSO 선택
-  ⑪ ForwardRenderer: PSO 세트 확장, Unlit 셰이더 초기화
-                      UpdateBufferIfDirty() + GetAlbedoTexture() 바인딩
-                      GetBlendMode() + IsDepthWrite() → PSO 선택
+[완료] Phase 4 — 렌더러 반영
+  [x] ⑩ GBufferRenderer: DrawGroup 기준 (mesh, IMaterial*) 변경
+                           UpdateBufferIfDirty() + GetBuffer() + GetAlbedoTexture() 바인딩
+                           GetCullMode() → PSO 선택 (DoubleSided PSO 추가)
+  [x] ⑪ ForwardRenderer: DrawGroup 기준 (mesh, IMaterial*) 변경
+                           UpdateBufferIfDirty() + GetAlbedoTexture() 바인딩
+                           GetBlendMode() → PSO 선택 (SelectForwardPSO 헬퍼)
 
-Phase 5 — RenderCommand.texture 제거 (렌더러 수정 완료 후)
-  ⑫ RenderCommand.texture 필드 제거
-  ⑬ AddMesh 시그니처에서 ITexture* 파라미터 제거
+[ ] Phase 5 — RenderCommand.texture 제거 (렌더러 수정 완료 후)
+  [ ] ⑫ RenderCommand.texture 필드 제거
+  [ ] ⑬ AddMesh / AddSkinnedMesh 시그니처에서 ITexture* 파라미터 제거
 
-Phase 6 — HLSL
-  ⑭ GBuffer_PS / GBufferSkinned_PS: PBR 출력. Cutout clip()
-  ⑮ DeferredLighting_CS: 완전 PBR (Cook-Torrance GGX)
-  ⑯ ForwardOpaque_PS: PBR 파라미터
-  ⑰ ForwardUnlit_VS/PS: 신규
+[ ] Phase 6 — HLSL
+  [ ] ⑭ GBuffer_PS / GBufferSkinned_PS: MaterialData PBR 레이아웃 반영. Cutout clip()
+  [ ] ⑮ DeferredLighting_CS: 완전 PBR (Cook-Torrance GGX)
+  [ ] ⑯ ForwardOpaque_PS: PBR 파라미터 + CB_Lights MaterialData 분리
+  [ ] ⑰ ForwardUnlit_VS/PS: 신규 (ForwardRenderer.InitializeUnlit 연결)
 
-Phase 7 — Normal Mapping (별도 작업)
-  ⑱ WorldModel normalTex 추가 → material->SetNormalTexture()
-  ⑲ GBuffer binding layout 확장 (t1: normal map)
-  ⑳ GBuffer_PS normal map 샘플링
+[ ] Phase 7 — Normal Mapping (별도 작업)
+  [ ] ⑱ WorldModel normalTex 추가 → material->SetNormalTexture()
+  [ ] ⑲ GBuffer binding layout 확장 (t1: normal map)
+  [ ] ⑳ GBuffer_PS normal map 샘플링
 ```
 
 ---

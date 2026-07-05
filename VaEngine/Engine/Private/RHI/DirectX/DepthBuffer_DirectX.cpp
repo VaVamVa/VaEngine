@@ -62,6 +62,28 @@ void DepthBuffer_DirectX::Create(IRenderDevice* device, uint32_t width, uint32_t
     ResourceViewDesc dsvViewDesc = { EResourceViewType::DepthStencilView };
     dsvView = std::make_unique<ResourceView_DirectX>(dsvViewDesc, dsvHandle, &depthResource);
 
+    // Read-only DSV — D3D12_RESOURCE_STATE_DEPTH_READ 와 함께 사용 (TransparentPass, DebugLinePass)
+    D3D12_DESCRIPTOR_HEAP_DESC readOnlyDsvHeapDesc = {};
+    readOnlyDsvHeapDesc.NumDescriptors             = 1;
+    readOnlyDsvHeapDesc.Type                       = D3D12_DESCRIPTOR_HEAP_TYPE_DSV;
+    readOnlyDsvHeapDesc.Flags                      = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
+
+    if (FAILED(d3dDevice->CreateDescriptorHeap(&readOnlyDsvHeapDesc, IID_PPV_ARGS(&readOnlyDsvHeap))))
+    {
+        throw std::runtime_error("Failed to create read-only DSV descriptor heap");
+    }
+
+    D3D12_DEPTH_STENCIL_VIEW_DESC readOnlyDsvDesc = {};
+    readOnlyDsvDesc.Format        = dsvFormat;
+    readOnlyDsvDesc.ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2D;
+    readOnlyDsvDesc.Flags         = D3D12_DSV_FLAG_READ_ONLY_DEPTH;
+
+    D3D12_CPU_DESCRIPTOR_HANDLE readOnlyDsvHandle = readOnlyDsvHeap->GetCPUDescriptorHandleForHeapStart();
+    d3dDevice->CreateDepthStencilView(depthResource.resource.Get(), &readOnlyDsvDesc, readOnlyDsvHandle);
+
+    ResourceViewDesc readOnlyDsvViewDesc = { EResourceViewType::DepthStencilView };
+    readOnlyDsvView = std::make_unique<ResourceView_DirectX>(readOnlyDsvViewDesc, readOnlyDsvHandle, &depthResource);
+
     // 2. SRV — 전역 힙 (Deferred Lighting Compute에서 Depth 읽기)
     globalSrvHeap = rdDevice->GetGlobalSRVHeap();
 

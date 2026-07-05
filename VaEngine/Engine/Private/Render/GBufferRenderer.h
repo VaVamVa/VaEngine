@@ -56,15 +56,16 @@ private:
     std::unique_ptr<IBindingLayout> bindingLayout;
     std::unique_ptr<IShader>        shader;
     std::unique_ptr<IPipelineState> pipelineState;
+    std::unique_ptr<IPipelineState> doubleSidedPipelineState;
 
     // Skinned mesh PSO
     std::unique_ptr<IBindingLayout> skinnedBindingLayout;
     std::unique_ptr<IShader>        skinnedShader;
     std::unique_ptr<IPipelineState> skinnedPipelineState;
+    std::unique_ptr<IPipelineState> doubleSidedSkinnedPipelineState;
 
     // GPU 버퍼
     std::unique_ptr<IBuffer>   viewProjBuffer;        // b0: ViewProj
-    std::unique_ptr<IBuffer>   materialBuffer;        // b1: GBufferMaterial (roughness/metallic)
     std::unique_ptr<IBuffer>   instanceBuffer;        // slot 1: per-instance world (static)
     std::unique_ptr<IBuffer>   skinnedInstanceBuffer; // slot 1: per-instance world (skinned)
     std::unique_ptr<ITexture>  defaultTexture;        // albedo 폴백 (1×1 white)

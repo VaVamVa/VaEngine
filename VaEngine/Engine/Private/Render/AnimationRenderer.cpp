@@ -32,14 +32,14 @@ static constexpr uint32_t MAX_SPOT_LIGHTS_ANIM  = 4;
 
 struct LightsBufferData_Anim
 {
-    DirectionalLightData dirLight;
-    PointLightData       pointLights[MAX_POINT_LIGHTS_ANIM];
-    SpotLightData        spotLights[MAX_SPOT_LIGHTS_ANIM];
-    MaterialData         material;
-    float                eyePosW[3];
-    int32_t              numPointLights;
-    int32_t              numSpotLights;
-    float                _lightPad[3];
+    DirectionalLightData dirLight;                              //   32 bytes
+    PointLightData       pointLights[MAX_POINT_LIGHTS_ANIM];   //  384 bytes (48 * 8)
+    SpotLightData        spotLights[MAX_SPOT_LIGHTS_ANIM];     //  256 bytes (64 * 4)
+    float                eyePosW[3];                           //   12 bytes
+    int32_t              numPointLights;                       //    4 bytes
+    int32_t              numSpotLights;                        //    4 bytes
+    float                _lightPad[3];                         //   12 bytes
+    // total: 704 bytes → 768 (CBV 256-aligned)
 };
 
 namespace {
@@ -126,15 +126,16 @@ struct AnimationPass : IRenderPass
 
 void AnimationRenderer::Initialize(IRenderDevice* device, const ShaderDesc& shaderDesc)
 {
-    // root param 0: b0 Vertex, 1: b2 Pixel, 2: t0 Pixel, 3: t1 Vertex (BonePalette buffer)
-    // ※ b3 (CB_TweenFrame), t1 (TransformsMap) 은 compute pass로 이전 — graphics는 본 팔레트만 읽음
+    // root 0: b0 ViewProj(Vertex), 1: b1 Material(Pixel), 2: b2 Lights(Pixel),
+    //         3: t0 Diffuse(Pixel), 4: t1 BonePalette(Vertex)
     BindingEntry bindings[] = {
         { EBindingType::ConstantBuffer, 0, EShaderStage::Vertex },
+        { EBindingType::ConstantBuffer, 1, EShaderStage::Pixel  },
         { EBindingType::ConstantBuffer, 2, EShaderStage::Pixel  },
         { EBindingType::Texture,        0, EShaderStage::Pixel  },
         { EBindingType::BufferSRV,      1, EShaderStage::Vertex },
     };
-    bindingLayout = device->CreateBindingLayout(bindings, 4);
+    bindingLayout = device->CreateBindingLayout(bindings, 5);
 
     shader = device->CreateShader(shaderDesc);
 
@@ -185,6 +186,12 @@ void AnimationRenderer::Initialize(IRenderDevice* device, const ShaderDesc& shad
     });
 
     material = std::make_unique<Material>();
+    material->Initialize(device);
+
+    // 텍스처 폴백 (cmd.material 없을 때 사용)
+    constexpr uint32_t white = 0xFFFFFFFF;
+    defaultTexture = device->CreateTexture();
+    defaultTexture->LoadFromMemory(device, &white, 1, 1);
 
     // ── Compute infrastructure (Step 3) ─────────────────────────────────
     // root param 0: b0 (CB_TweenFrame), 1: t0 (TransformsMap), 2: u0 (BonePalette)
@@ -253,7 +260,7 @@ void AnimationRenderer::Render(ICommandList* cmdList, const RenderScene& scene)
         viewProjBuffer->Upload(&vpdata, sizeof(vpdata));
     }
 
-    // Lights + 재질 업로드 (root param 1 → b2)
+    // 조명 업로드 (root 2 → b2)
     {
         const LightingState& lighting = scene.GetLighting();
         LightsBufferData_Anim ldata = {};
@@ -266,7 +273,6 @@ void AnimationRenderer::Render(ICommandList* cmdList, const RenderScene& scene)
             std::min(lighting.spotLights.size(), static_cast<size_t>(MAX_SPOT_LIGHTS_ANIM)));
         for (int32_t i = 0; i < ldata.numSpotLights; ++i)
             ldata.spotLights[i] = lighting.spotLights[i];
-        ldata.material   = material->GetData();
         ldata.eyePosW[0] = cam.eyePos[0];
         ldata.eyePosW[1] = cam.eyePos[1];
         ldata.eyePosW[2] = cam.eyePos[2];
@@ -274,9 +280,17 @@ void AnimationRenderer::Render(ICommandList* cmdList, const RenderScene& scene)
     }
 
     pipelineState->Bind(cmdList);
-    cmdList->SetConstantBuffer(viewProjBuffer.get(), 0);  // b0
-    cmdList->SetConstantBuffer(lightsBuffer.get(),   1);  // b2
+    cmdList->SetConstantBuffer(viewProjBuffer.get(), 0);  // root 0 → b0
+    cmdList->SetConstantBuffer(lightsBuffer.get(),   2);  // root 2 → b2
     cmdList->SetPrimitiveTopology(EPrimitiveTopology::TriangleList);
+
+    // root 1(b1)·root 3(t0)을 루프 진입 전 기본값으로 바인딩
+    // (WorldAnimatedModel은 material 미보유 — cmd.material == nullptr인 경우 대비)
+    material->UpdateBufferIfDirty();
+    cmdList->SetConstantBuffer(material->GetBuffer(), 1);  // root 1 → b1
+    defaultTexture->Bind(cmdList, 3);                       // root 3 → t0
+
+    IMaterial* boundMat = nullptr;
 
     for (const RenderCommand& cmd : cmds)
     {
@@ -285,12 +299,19 @@ void AnimationRenderer::Render(ICommandList* cmdList, const RenderScene& scene)
 
         const uint32_t count = std::min(cmd.instanceCount, cmd.skinnedMesh->GetMaxInstances());
 
-        // Diffuse 텍스처 바인딩 (root param 2 → t0)
-        if (cmd.texture)
-            cmd.texture->Bind(cmdList, 2);
+        // Material (root 1 → b1) + 텍스처 (root 3 → t0) — 재질 변경 시에만 rebind
+        if (cmd.material != boundMat)
+        {
+            IMaterial* effMat = cmd.material ? cmd.material : material.get();
+            effMat->UpdateBufferIfDirty();
+            cmdList->SetConstantBuffer(effMat->GetBuffer(), 1);  // root 1 → b1
+            ITexture* albedo = cmd.material ? cmd.material->GetAlbedoTexture() : nullptr;
+            (albedo ? albedo : defaultTexture.get())->Bind(cmdList, 3);  // root 3 → t0
+            boundMat = cmd.material;
+        }
 
-        // BonePalette SRV — mesh별 buffer (root param 3 → t1)
-        cmdList->SetGraphicsSRV(cmd.skinnedMesh->GetBonePaletteSRV(), 3);
+        // BonePalette SRV (root 4 → t1)
+        cmdList->SetGraphicsSRV(cmd.skinnedMesh->GetBonePaletteSRV(), 4);
 
         // 인스턴스 월드 행렬 업로드 (slot 1 vertex buffer)
         instanceBuffer->Upload(&cmd.worldMatrix, count * sizeof(Matrix4x4));

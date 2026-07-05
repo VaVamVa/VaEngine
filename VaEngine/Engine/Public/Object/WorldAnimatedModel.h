@@ -15,6 +15,7 @@
 
 class IRenderDevice;
 class RenderScene;
+class IMaterial;
 
 class WorldAnimatedModel : public WorldObject
 {
@@ -36,6 +37,7 @@ public:
 
     uint32_t           GetClipCount()              const { return clipCount; }
     const std::string& GetClipName(uint32_t index) const { return clips[index].name; }
+    IMaterial*         GetMaterial()               const { return material.get(); }
 
 
 protected:
@@ -47,6 +49,7 @@ private:
     std::unique_ptr<Skeleton>                   skeleton;
     std::vector<std::unique_ptr<SkinnedMesh>>   meshes;
     std::unique_ptr<ITexture>                   texture;
+    std::unique_ptr<IMaterial>                  material;
     std::unique_ptr<ITexture2DArray>            transformsMap;
     std::unique_ptr<IBuffer>                    tweenBuffer;
     std::vector<AnimClipData>                   clips;

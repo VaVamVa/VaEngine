@@ -9,4 +9,7 @@ void WO_Cube::Initialize(IRenderDevice* device)
     m->Initialize(device, CubeShape{}.Build());
     meshes.push_back(std::move(m));
     EnsureMaterial();
+    material->Initialize(device);
+    material->SetBlendMode(EBlendMode::AlphaBlend);
+    material->SetAlbedo(1.0f, 1.0f, 1.0f, 0.5f);
 }

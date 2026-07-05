@@ -32,6 +32,7 @@ public:
     void InitializeBlit(IRenderDevice* device, const ShaderDesc& shaderDesc);
     void InitializeSky(IRenderDevice* device, const ShaderDesc& shaderDesc);
     void InitializeForward(IRenderDevice* device, const ShaderDesc& shaderDesc);
+    void InitializeTransparentForward(IRenderDevice* device, const ShaderDesc& shaderDesc);
     void InitializeAnimation(IRenderDevice* device, const ShaderDesc& shaderDesc);
     void InitializeGBufferSkinned(IRenderDevice* device, const ShaderDesc& shaderDesc);
     void InitializeDebugLines(IRenderDevice* device, const ShaderDesc& shaderDesc);

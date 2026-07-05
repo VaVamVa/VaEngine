@@ -40,6 +40,9 @@ void WorldModel::Initialize(IRenderDevice* device,
         meshes.push_back(std::move(prim));
     }
 
+    EnsureMaterial();
+    material->Initialize(device);
+
     if (matlPath.empty())
         return;
 
@@ -52,12 +55,11 @@ void WorldModel::Initialize(IRenderDevice* device,
 
     texture = device->CreateTexture();
     texture->LoadFromFile(device, spath.c_str());
-
-    EnsureMaterial();
+    material->SetAlbedoTexture(texture.get());
 }
 
 void WorldModel::Impl_AddToScene(RenderScene& scene) const
 {
     for (const auto& mesh : meshes)
-        scene.AddMesh(mesh.get(), transform.GetMatrix(), texture.get(), material.get(), renderDesc);
+        scene.AddMesh(mesh.get(), transform.GetMatrix(), material.get(), renderDesc);
 }

@@ -83,7 +83,7 @@ struct DeferredBlitPass : IRenderPass
         RenderPassDesc passDesc;
         passDesc.renderTargetCount            = 1;
         passDesc.renderTargets[0].view        = output.backBufferView;
-        passDesc.renderTargets[0].loadAction  = ELoadAction::Clear;
+        passDesc.renderTargets[0].loadAction  = ELoadAction::DontCare;
         passDesc.renderTargets[0].storeAction = EStoreAction::Store;
         std::memcpy(passDesc.renderTargets[0].clearColor, output.clearColor, sizeof(float) * 4);
 
@@ -158,6 +158,11 @@ void SceneRenderer::InitializeForward(IRenderDevice* device, const ShaderDesc& s
     forwardRenderer.Initialize(device, shaderDesc);
 }
 
+void SceneRenderer::InitializeTransparentForward(IRenderDevice* device, const ShaderDesc& shaderDesc)
+{
+    forwardRenderer.InitializeTransparent(device, shaderDesc);
+}
+
 void SceneRenderer::InitializeAnimation(IRenderDevice* device, const ShaderDesc& shaderDesc)
 {
     animationRenderer.Initialize(device, shaderDesc);
@@ -210,8 +215,8 @@ void SceneRenderer::AddPasses(RenderGraph& graph, const FrameOutput& output, con
     // 6. Transparent → backBuffer (Load, shared depth from GBufferPass)
     forwardRenderer.AddTransparentPasses(graph, output, depth.get());
 
-    // 7. Debug Lines → backBuffer
-    forwardRenderer.AddDebugLinePasses(graph, output);
+    // 7. Debug Lines → backBuffer (shared depth from GBufferPass)
+    forwardRenderer.AddDebugLinePasses(graph, output, depth.get());
 
     // 8. Debug Text → backBuffer (최상단)
     forwardRenderer.AddDebugTextPasses(graph, output);

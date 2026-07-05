@@ -50,6 +50,7 @@ private:
     std::unique_ptr<IBuffer>        instanceBuffer;   // slot 1: per-instance world
 
     std::unique_ptr<IMaterial>      material;
+    std::unique_ptr<ITexture>       defaultTexture;  // 폴백 1×1 흰색 텍스처
 
     // Compute pass — bone palette pre-computation
     std::unique_ptr<IBindingLayout> computeBindingLayout;

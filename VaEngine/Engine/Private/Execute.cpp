@@ -107,6 +107,12 @@ void Execute::OnInitialize(NativeDisplayInfo displayInfo)
 			"VSMain",
 			"PSMain"
 		});
+		sceneRenderer.InitializeTransparentForward(renderDevice.get(), {
+			SHADER_DIR L"/ForwardTransparent_VS.cso",
+			SHADER_DIR L"/ForwardTransparent_PS.cso",
+			"VSMain",
+			"PSMain"
+		});
 		sceneRenderer.InitializeAnimation(renderDevice.get(), {
 			SHADER_DIR L"/AnimationDemo_VS.cso",
 			SHADER_DIR L"/AnimationDemo_PS.cso",

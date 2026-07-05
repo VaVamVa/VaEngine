@@ -67,14 +67,16 @@ void VaProgramName::OnInitialize(IRenderDevice* device)
 
 	lightManager = new LightManager();
 	lightManager->GetDirectionalLight()->SetEnabled(true);
+	lightManager->GetDirectionalLight()->SetColor(1.0f, 1.0f, 0.95f);
+	lightManager->GetDirectionalLight()->SetIntensity(3.0f);
 	VA_LOG("Light", "Directional light enabled");
 
 	IPointLight* pt = lightManager->AddPointLight();
 	pt->SetPosition(2.0f, -2.0f, -2.0f);
 	pt->SetRange(15.0f);
 	pt->SetAttenuation(1.0f, 0.09f, 0.032f);
-	pt->SetDiffuse(1.0f, 0.8f, 0.6f);
-	pt->SetSpecular(1.0f, 0.8f, 0.6f);
+	pt->SetColor(1.0f, 0.8f, 0.6f);
+	pt->SetIntensity(3.0f);
 	pt->SetEnabled(false);
 
 

@@ -1,4 +1,5 @@
 #include "../Common/Sampler.hlsli"
+#include "../Common/GBufferMaterial.hlsli"
 
 #pragma pack_matrix(row_major)
 
@@ -10,13 +11,7 @@ cbuffer CB_ViewProj : register(b0)
     float4x4 gViewProj;
 };
 
-// b1 — G-Buffer material constants
-cbuffer CB_GBufferMaterial : register(b1)
-{
-    float  gRoughness;
-    float  gMetallic;
-    float2 _matPad;
-};
+// b1 — CB_GBufferMaterial (GBufferMaterial.hlsli)
 
 // t0 — Diffuse texture
 Texture2D gDiffuse : register(t0);
@@ -106,11 +101,15 @@ PS_INPUT VSMain(VS_INPUT input, uint instanceID : SV_InstanceID)
 
 GBuffer_OUT PSMain(PS_INPUT input)
 {
-    float3 N      = normalize(input.normal);
-    float4 albedo = gDiffuse.Sample(LinearSampler, input.uv) * input.color;
+    float3 N        = normalize(input.normal);
+    float4 texColor = gDiffuse.Sample(LinearSampler, input.uv) * input.color;
+
+    clip(texColor.a - gAlphaThreshold);
+
+    float3 albedo = texColor.rgb * gAlbedo.rgb;
 
     GBuffer_OUT o;
-    o.rt0 = float4(albedo.rgb, 1.0f);
+    o.rt0 = float4(albedo, gAO);
     o.rt1 = float4(N, gRoughness);
     o.rt2 = float4(gMetallic, 0.0f, 0.0f, 0.0f);
     return o;

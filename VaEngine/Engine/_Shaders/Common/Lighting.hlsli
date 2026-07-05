@@ -5,153 +5,103 @@
 
 #define MAX_POINT_LIGHTS 8
 #define MAX_SPOT_LIGHTS  4
+#define PI 3.14159265f
 
-// --- Light / Material structs ---
+// ── PBR 조명 구조체 (ILight.h 와 1:1) ────────────────────────────────────────
 
-struct DirectionalLight
+struct DirectionalLight   // 32 bytes
 {
-    float4 ambient;
-    float4 diffuse;
-    float4 specular;
+    float3 color;
+    float  intensity;
     float3 direction;
     float  _pad;
 };
 
-struct PointLight
+struct PointLight          // 48 bytes
 {
-    float4 ambient;
-    float4 diffuse;
-    float4 specular;
-    float3 position;
+    float3 color;
     float  range;
+    float3 position;
+    float  intensity;
     float3 attenuation;
     float  _pad;
 };
 
-struct SpotLight
+struct SpotLight           // 64 bytes
 {
-    float4 ambient;
-    float4 diffuse;
-    float4 specular;
-    float3 position;
+    float3 color;
     float  range;
+    float3 position;
+    float  intensity;
     float3 direction;
     float  spot;
     float3 attenuation;
     float  _pad;
 };
 
-struct Material
-{
-    float4 ambient;
-    float4 diffuse;
-    float4 specular; // w = specular power
-    float4 reflect;
-};
-
-// Per-frame light constants (b2)
+// Per-frame light constants (b2) — material 없음
 cbuffer CB_Lights : register(b2)
 {
     DirectionalLight gDirLight;
-    PointLight       gPointLights[MAX_POINT_LIGHTS];   // 80 * 8 = 640 bytes
-    SpotLight        gSpotLights[MAX_SPOT_LIGHTS];     // 96 * 4 = 384 bytes
-    Material         gMaterial;
+    PointLight       gPointLights[MAX_POINT_LIGHTS];  // 48 * 8 = 384 bytes
+    SpotLight        gSpotLights[MAX_SPOT_LIGHTS];    // 64 * 4 = 256 bytes
     float3           gEyePosW;
     int              gNumPointLights;
     int              gNumSpotLights;
     float3           _lightPad;
+    // total: 704 bytes → 768 (CBV 256-aligned)
 };
 
-// --- Light contribution functions ---
+// ── Cook-Torrance GGX ────────────────────────────────────────────────────────
 
-void ComputeDirectionalLight(
-    Material mat, DirectionalLight light,
-    float3 normal, float3 toEye,
-    out float4 ambient, out float4 diffuse, out float4 spec)
+// Trowbridge-Reitz GGX 법선 분포 함수
+float D_GGX(float NdotH, float roughness)
 {
-    ambient = float4(0, 0, 0, 0);
-    diffuse = float4(0, 0, 0, 0);
-    spec    = float4(0, 0, 0, 0);
-
-    float3 lightVec = -light.direction;
-    ambient = mat.ambient * light.ambient;
-
-    float diffFactor = dot(lightVec, normal);
-    if (diffFactor > 0.0f)
-    {
-        diffuse = diffFactor * mat.diffuse * light.diffuse;
-        float3 r = reflect(-lightVec, normal);
-        float specFactor = pow(max(dot(r, toEye), 0.0f), mat.specular.w);
-        spec = specFactor * mat.specular * light.specular;
-    }
+    float a  = roughness * roughness;
+    float a2 = a * a;
+    float d  = NdotH * NdotH * (a2 - 1.0f) + 1.0f;
+    return a2 / (PI * d * d);
 }
 
-void ComputePointLight(
-    Material mat, PointLight light,
-    float3 pos, float3 normal, float3 toEye,
-    out float4 ambient, out float4 diffuse, out float4 spec)
+// Fresnel-Schlick 근사
+float3 F_Schlick(float VdotH, float3 F0)
 {
-    ambient = float4(0, 0, 0, 0);
-    diffuse = float4(0, 0, 0, 0);
-    spec    = float4(0, 0, 0, 0);
-
-    float3 lightVec = light.position - pos;
-    float dist = length(lightVec);
-    if (dist > light.range) return;
-
-    lightVec /= dist;
-    ambient = mat.ambient * light.ambient;
-
-    float diffFactor = dot(lightVec, normal);
-    if (diffFactor > 0.0f)
-    {
-        diffuse = diffFactor * mat.diffuse * light.diffuse;
-        float3 r = reflect(-lightVec, normal);
-        float specFactor = pow(max(dot(r, toEye), 0.0f), mat.specular.w);
-        spec = specFactor * mat.specular * light.specular;
-    }
-
-    float att = 1.0f / dot(light.attenuation, float3(1.0f, dist, dist * dist));
-    diffuse *= att;
-    spec    *= att;
+    return F0 + (1.0f - F0) * pow(1.0f - VdotH, 5.0f);
 }
 
-void ComputeSpotLight(
-    Material mat, SpotLight light,
-    float3 pos, float3 normal, float3 toEye,
-    out float4 ambient, out float4 diffuse, out float4 spec)
+// Smith Schlick-GGX 기하 감쇠
+float G_Smith(float NdotV, float NdotL, float roughness)
 {
-    ambient = float4(0, 0, 0, 0);
-    diffuse = float4(0, 0, 0, 0);
-    spec    = float4(0, 0, 0, 0);
-
-    float3 lightVec = light.position - pos;
-    float dist = length(lightVec);
-    if (dist > light.range) return;
-
-    lightVec /= dist;
-    ambient = mat.ambient * light.ambient;
-
-    float diffFactor = dot(lightVec, normal);
-    if (diffFactor > 0.0f)
-    {
-        diffuse = diffFactor * mat.diffuse * light.diffuse;
-        float3 r = reflect(-lightVec, normal);
-        float specFactor = pow(max(dot(r, toEye), 0.0f), mat.specular.w);
-        spec = specFactor * mat.specular * light.specular;
-    }
-
-    float spot = pow(max(dot(-lightVec, light.direction), 0.0f), light.spot);
-    float att  = spot / dot(light.attenuation, float3(1.0f, dist, dist * dist));
-    ambient *= spot;
-    diffuse *= att;
-    spec    *= att;
+    float r  = roughness + 1.0f;
+    float k  = (r * r) / 8.0f;
+    float gv = NdotV / (NdotV * (1.0f - k) + k);
+    float gl = NdotL / (NdotL * (1.0f - k) + k);
+    return gv * gl;
 }
 
-// TODO: Shadow mapping — Depth Buffer 구현 후 활성화
-// Texture2D    gShadowMap        : register(t8);
-// float4x4     gShadowTransform;
-// float        gShadowMapSize;
-// float        gShadowMapInvSize;
+// 단일 광원의 BRDF 기여
+// radiance: light.color * light.intensity (* attenuation)
+float3 EvalBRDF(
+    float3 N, float3 V, float3 L,
+    float3 albedo, float roughness, float metallic,
+    float3 radiance)
+{
+    float3 H    = normalize(V + L);
+    float NdotL = max(dot(N, L), 0.0f);
+    float NdotV = max(dot(N, V), 0.001f);
+    float NdotH = max(dot(N, H), 0.0f);
+    float VdotH = max(dot(V, H), 0.0f);
+
+    float3 F0 = lerp(float3(0.04f, 0.04f, 0.04f), albedo, metallic);
+
+    float  D = D_GGX(NdotH, roughness);
+    float3 F = F_Schlick(VdotH, F0);
+    float  G = G_Smith(NdotV, NdotL, roughness);
+
+    float3 spec = (D * F * G) / max(4.0f * NdotV * NdotL, 0.001f);
+    float3 kD   = (1.0f - F) * (1.0f - metallic);
+
+    return (kD * albedo / PI + spec) * radiance * NdotL;
+}
 
 #endif // LIGHTING_HLSLI

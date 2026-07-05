@@ -1,9 +1,13 @@
-#include "../Common/Lighting.hlsli"
-#include "../Common/GBufferMaterial.hlsli"
+#ifndef TRANSPARENT_HLSLI
+#define TRANSPARENT_HLSLI
 
-#pragma pack_matrix(row_major)
+// 반투명 오브젝트용 PBR 셰이더 (플랫폼 중립)
+// 래퍼: DirectX/ForwardTransparent.hlsl (DXIL)
+//       Vulkan/ForwardTransparent.hlsl  (SPIRV, 추후)
 
-// b0 — per-frame: view-projection
+#include "Lighting.hlsli"
+#include "GBufferMaterial.hlsli"
+
 cbuffer CB_ViewProj : register(b0)
 {
     float4x4 gViewProj;
@@ -16,12 +20,10 @@ Texture2D gDiffuse : register(t0);
 
 struct VS_INPUT
 {
-    // slot 0 — per vertex
     float3 pos    : POSITION;
     float3 normal : NORMAL;
     float4 color  : COLOR;
     float2 uv     : TEXCOORD;
-    // slot 1 — per instance: world matrix rows
     float4 row0   : INSTANCETRANSFORM0;
     float4 row1   : INSTANCETRANSFORM1;
     float4 row2   : INSTANCETRANSFORM2;
@@ -95,5 +97,7 @@ float4 PSMain(PS_INPUT input) : SV_TARGET
 
     float3 ambient = float3(0.10f, 0.10f, 0.10f) * albedo * gAO;
     float3 color   = Lo + ambient + gEmissive;
-    return float4(color, 1.0f);
+    return float4(color, texColor.a * gAlbedo.a);
 }
+
+#endif // TRANSPARENT_HLSLI

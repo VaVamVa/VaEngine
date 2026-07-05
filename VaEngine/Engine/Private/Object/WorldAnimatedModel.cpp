@@ -5,6 +5,7 @@
 #include "Asset/SkmLoader.h"
 #include "Asset/ClipLoader.h"
 #include "Scene/RenderScene.h"
+#include "Render/Material.h"
 
 #include "RHI/IRenderDevice.h"
 #include "RHI/Buffer/IBuffer.h"
@@ -48,11 +49,15 @@ void WorldAnimatedModel::Initialize(IRenderDevice* device,
         ++clipCount;
     }
 
+    material = std::make_unique<Material>();
+    material->Initialize(device);
+
     // Diffuse 텍스처 로드
     if (!texturePath.empty())
     {
         texture = device->CreateTexture();
         texture->LoadFromFile(device, texturePath.c_str());
+        material->SetAlbedoTexture(texture.get());
     }
 
     // 본 변환 행렬을 Texture2DArray에 굽기
@@ -172,10 +177,10 @@ void WorldAnimatedModel::Impl_AddToScene(RenderScene& scene) const
         scene.AddSkinnedMesh(
             mesh.get(),
             world,
-            texture.get(),
             transformsMap.get(),
             tweenBuffer.get(),
             count,
+            material.get(),
             renderDesc
         );
     }

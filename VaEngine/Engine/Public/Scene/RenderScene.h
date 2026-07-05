@@ -13,7 +13,6 @@
 #include <format>
 
 class IMesh;
-class ITexture;
 class ITexture2DArray;
 class SkinnedMesh;
 class IBuffer;
@@ -76,7 +75,6 @@ struct RenderCommand
 	SceneObjectID    objectID      = 0;
 	IMesh*           mesh          = nullptr;
 	Matrix4x4        worldMatrix;
-	ITexture*        texture       = nullptr;
 	IMaterial*       material      = nullptr;
 
 	// Skinned Mesh Data (Optional)
@@ -114,16 +112,15 @@ public:
 
 
 	void AddMesh(IMesh* mesh, const Matrix4x4& worldMatrix,
-	             ITexture* texture = nullptr, IMaterial* material = nullptr,
+	             IMaterial* material = nullptr,
 	             const RenderObjectDesc& desc = {})
 	{
 		RenderCommand cmd;
 		cmd.objectID    = desc.objectID;
 		cmd.mesh        = mesh;
 		cmd.worldMatrix = worldMatrix;
-		cmd.texture     = texture;
 		cmd.material    = material;
-		cmd.sortKey     = CalculateSortKey(worldMatrix, material, desc.layer, desc.materialID);
+		cmd.sortKey     = CalculateSortKey(worldMatrix, material, desc.layer);
 		commands.push_back(cmd);
 	}
 
@@ -146,19 +143,20 @@ public:
 	}
 
 	void AddSkinnedMesh(SkinnedMesh* mesh, const Matrix4x4& worldMatrix,
-	                    ITexture* texture, ITexture2DArray* transformsMap,
+	                    ITexture2DArray* transformsMap,
 	                    IBuffer* tweenBuffer, uint32_t instanceCount = 1,
+	                    IMaterial* material = nullptr,
 	                    const RenderObjectDesc& desc = {})
 	{
 		RenderCommand cmd;
 		cmd.objectID      = desc.objectID;
 		cmd.skinnedMesh   = mesh;
-		cmd.texture       = texture;
+		cmd.material      = material;
 		cmd.transformsMap = transformsMap;
 		cmd.tweenBuffer   = tweenBuffer;
 		cmd.worldMatrix   = worldMatrix;
 		cmd.instanceCount = instanceCount;
-		cmd.sortKey       = CalculateSortKey(worldMatrix, nullptr/*현재 WorldAnimatedModel 에는 Material 이 존재하지 않음*/, desc.layer, desc.materialID);
+		cmd.sortKey       = CalculateSortKey(worldMatrix, material, desc.layer);
 		commands.push_back(cmd);
 	}
 
@@ -179,7 +177,7 @@ public:
 
 private:
 	RenderSortKey CalculateSortKey(const Matrix4x4& worldMatrix, IMaterial* material,
-	                               uint8_t layer, uint16_t materialID = 0) const
+	                               uint8_t layer) const
 	{
 		SortKeyDesc desc;
 
@@ -187,7 +185,7 @@ private:
 		desc.layer       = layer;
 		desc.translucent = (material != nullptr && material->GetBlendMode() != EBlendMode::Opaque);
 		desc.pass        = 0;
-		desc.materialID  = materialID;
+		desc.materialID  = material ? material->GetID() : uint16_t(0);
 
 		// 2. Depth calculation (distance from eye)
 		Vector3 objPos = { worldMatrix.m[3][0], worldMatrix.m[3][1], worldMatrix.m[3][2] };

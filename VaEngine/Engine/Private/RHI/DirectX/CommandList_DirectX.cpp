@@ -205,7 +205,7 @@ void CommandList_DirectX::DrawInstanced(uint32_t vertexCount, uint32_t instanceC
 }
 
 void CommandList_DirectX::SetPrimitiveTopology(EPrimitiveTopology topology)
-{
+{ 
 	D3D12_PRIMITIVE_TOPOLOGY dxTopology = D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
 	switch (topology)
 	{

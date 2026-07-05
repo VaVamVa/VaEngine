@@ -1,6 +1,6 @@
 # VaEngine — 프로젝트 현황판
 
-> 마지막 업데이트: 2026-05-11
+> 마지막 업데이트: 2026-07-06
 >
 > **[공지] 이 문서는 현황판입니다. ToDo 항목은 각 날짜의 Log 파일에만 기록합니다.**
 
@@ -13,7 +13,7 @@ DirectX12 + Vulkan 크로스 플랫폼 3D 렌더링 엔진.
 
 ---
 
-## 핵심 아키텍처 (2026-05-11 기준)
+## 핵심 아키텍처 (2026-07-06 기준)
 
 ### Execute (Engine 소유) + ApplicationManager (Application 소유)
 
@@ -111,7 +111,7 @@ VaEngine/
 
 | 프로젝트 | 타입 | 빌드 | 코드 작성 |
 |---|---|---|---|
-| Engine | Static Library | ✅ 성공 | ✅ RHI/RenderGraph/Renderer/Execute + 스켈레탈 애니메이션 완료 |
+| Engine | Static Library | ✅ 성공 | ✅ RHI/RenderGraph/Renderer/Execute + 스켈레탈 애니메이션 + Deferred Renderer + Material 시스템(Phase 1~6) + PBR(Cook-Torrance GGX) 완료 |
 | Application | Static Library | ✅ 성공 | ✅ WorldObject 계층, LightManager, FreeCamera 완료 |
 | ExecWindows | Executable | ✅ 성공 | ✅ WinMain 연동 완료 |
 | VaShaderCompiler | Tool | ✅ 성공 | ✅ 오프라인 셰이더 컴파일 시스템 구축 완료 |
@@ -149,11 +149,25 @@ VaEngine/
 - **Bone Palette GPU 오프로드**: `BonePaletteCompute.hlsl` — Dispatch(1, instanceCount, 1), `[numthreads(250, 1, 1)]`. `SkinnedMesh`가 buffer/UAV/SRV 소유 (다종 mesh 자동 분리)
 - **3-clip Blend**: `EAnimBlendMode::Blend` — `PlayBlend(clip0, clip1, clip2)` + `SetBlendAlpha(alpha [0,2])`. CSMain에서 alpha≤1→clip0↔1, alpha>1→clip1↔2 가중 합성
 
-### 8. Forward 멀티패스 렌더링
-- **패스 순서**: `SkyPass`(ELoadAction::Clear) → `ForwardPass`(Opaque, ELoadAction::Load) → `TransparentPass`(Transparent, ELoadAction::Load)
-- **Opaque/Transparent 분기**: `RenderCommand::sortKey` bit[59](`translucent` 플래그)로 판별. `ForwardRenderer::Render(isTransparentPass)`가 해당 패스에 속한 명령만 그린다.
-- **SkinnedMesh 제외**: `cmd.skinnedMesh != nullptr` 이면 ForwardRenderer에서 스킵 → `AnimationRenderer`가 전담.
-- **Depth 재사용**: `TransparentPass`는 `ForwardPass`가 기록한 깊이 버퍼를 `DepthRead`로 읽어 Z-Test만 수행 (DepthWrite 없음).
+### 8. Deferred + Forward 하이브리드 렌더링
+
+#### Windows (DX12) 기준 패스 순서
+```
+DeferredSkyPass (hdrOut 클리어) →
+BonePaletteCompute (스키닝 GPU 오프로드) →
+GBufferPass (RT0 Albedo+AO / RT1 Normal+Rough / RT2 Metallic) →
+DeferredLightingPass (CS: GBuffer → hdrOut) →
+BlitPass (hdrOut → 백버퍼) →
+TransparentPass (ForwardRenderer, shared depth DepthRead) →
+DebugLinePass →
+DebugTextPass
+```
+
+- **Opaque/Transparent 분기**: `RenderSortKey` bit[59](`translucent` 플래그). `GBufferRenderer`는 translucent 스킵, `ForwardRenderer::TransparentPass`가 담당.
+- **2-Pass 투명 렌더링**: `transparentBackFacePSO`(CullMode::Front) → `transparentFrontFacePSO`(CullMode::Back) 순서로 투명 오브젝트 자신의 뒷면 및 앞면을 모두 렌더링. 비볼록 교차는 OIT 확장 지점(`ResolveOIT` stub) 주석으로 표시.
+- **Material 중심 렌더링 (Phase 1~6 완료)**: `IMaterial`이 GPU 버퍼 소유 (dirty flag). DrawGroup 기준 `(mesh, IMaterial*)`. `GetCullMode()` → DoubleSided PSO 선택. `GetBlendMode()` → ForwardRenderer PSO 선택. `RenderCommand.texture` 제거 (Phase 5). HLSL Phong → PBR 전면 교체 (Phase 6).
+- **Read-Only DSV**: `TransparentPass` / `DebugLinePass`는 GBuffer depth를 `D3D12_DSV_FLAG_READ_ONLY_DEPTH`로 바인딩 (depth test O, write X).
+- **SkinnedMesh**: GBufferSkinned PSO로 GBuffer에 직접 쓰기. ForwardRenderer 경유 없음.
 
 ### 9. Meshless HDRi Sky Rendering
 - **Full-screen Triangle**: SV_VertexID (0,1,2) → NDC 삼각형 생성. VB/IB 없이 `DrawInstanced(3, 1)` 한 번으로 화면 전체 커버
@@ -168,6 +182,8 @@ VaEngine/
 
 | 파일 | 내용 |
 |---|---|
+| [2025-12-10.md](2025-12-10.md) | DirectX11 vs DirectX12 비교 (멀티스레딩·메모리·동기화 방식 차이), DXGI 역할 및 헤더 버전 구조 (1.0~1.6 점진적 COM 상속) |
+| [2026-01-17.md](2026-01-17.md) | WndProc 최적화 — GetMessage(블로킹) → PeekMessage(논블로킹) 전환, 메시지 핸들러 테이블, 입력 버퍼링, Raw Input API |
 | [2026-04-22_Q&A.md](2026-04-22_Q&A.md) | Public/Private 분리, RHI 구조, Platform 위치, 라이프사이클, 빌드 워크플로우 |
 | [2026-04-22_Log.md](2026-04-22_Log.md) | Q10 아키텍처 재구성, 프로젝트 4개 생성, Android 빌드 오류 해결 |
 | [2026-04-30_Q&A.md](2026-04-30_Q&A.md) | ExecAndroid 참조 경고, IApplication 혼용 문제, 플랫폼별 구현 구조 확정 |
@@ -175,6 +191,7 @@ VaEngine/
 | [2026-05-01_Q&A.md](2026-05-01_Q&A.md) | CMake 파일 수집, RHI 백엔드 CMake 제어, FNativeWindowInfo, Vulkan/DX12 Surface, NDK, Android Vulkan, 레이어 순정 확정 |
 | [2026-05-02_Q&A.md](2026-05-02_Q&A.md) | IExecute 구현체 명명, WinMain 설계, RHI 인터페이스 설계, DX12 개요, Factory 패턴, FILE_SET, USE_DX12 매크로, DirectX-Headers |
 | [2026-05-02_Log.md](2026-05-02_Log.md) | WinMain 구현 완료, RHI 인터페이스 전체 선언, RHILoader 팩토리, DX12 환경 구성 |
+| [2026-05-03_Q&A.md](2026-05-03_Q&A.md) | DX12 초기 구현 빌드·설계 Q&A 23항목 — FILE_SET 스코프 충돌, FetchContent vs Submodule, DirectX-Headers include 경로, IRenderDevice Factory 설계, virtual/override 관례, DXGI FetchContent 불가 이유 |
 | [2026-05-03_Log.md](2026-05-03_Log.md) | DX12 RHI 핵심 객체 구현 완료 (CommandQueue, Fence, SwapChain), ThirdParty FetchContent 전환 |
 | [2026-05-04_Q&A.md](2026-05-04_Q&A.md) | IExecute 필요성, Execute 위치 결정, 엔진 배포 전략 |
 | [2026-05-04_Log.md](2026-05-04_Log.md) | Execute → Application 이동, RHI 인터페이스 재구조화, CommandList/CommandAlloc 구현, engine 프리셋 추가 |
@@ -188,6 +205,8 @@ VaEngine/
 | [2026-05-10_Q&A.md](2026-05-10_Q&A.md) | 외부 HDR Asset 적용 방법, LoadFromFile 인터페이스 개선 |
 | [2026-05-10_Log.md](2026-05-10_Log.md) | Meshless Sky 런타임 검증, LoadFromFile narrow 전환, ASSETS_DIR 정비, Debug Text Panel 시스템, Pick Ray, Compute 인프라 + BonePalette GPU 오프로드, 3-clip BlendBones |
 | [2026-05-11_Log.md](2026-05-11_Log.md) | RenderCommand 통합(Unified Command Stream), CalculateSortKey 자동화, TransparentPass 2-패스 구성, AnimationRenderer API 동기화, RenderGraph 디버그 패널, CameraManager 접근자 확장 |
+| [2026-07-06_Log.md](2026-07-06_Log.md) | Phase 4~6 완료: 2-Pass 투명 렌더링, RenderCommand.texture 제거(Phase 5), HLSL Phong→PBR 전면 교체(Phase 6), 0x87A 크래시 2건 수정, PBR ambient 조정 |
+| [Plan/Plan_Material_Driven.md](Plan/Plan_Material_Driven.md) | Material 중심 렌더링 계획서 (Phase 1~6 완료, Phase 7 Normal Mapping 대기) |
 | [Plan/Plan_Animation.md](Plan/Plan_Animation.md) | 스켈레탈 애니메이션 구현 계획 (Steps 1~11 완료) |
 | [Plan/AssetImporter.md](Plan/AssetImporter.md) | VaImportTool + 텍스처 파이프라인 구현 계획 |
 | [Plan/Meshless_Sky_Rendering.md](Plan/Meshless_Sky_Rendering.md) | Meshless HDRi Sky Rendering 구현 계획 (Steps 1~9 완료) |

@@ -68,9 +68,16 @@ void PipelineState_DirectX::Create(ID3D12Device* device, const PipelineStateDesc
 		rt.RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;
 	}
 	psoDesc.BlendState = blendDesc;
-	psoDesc.DepthStencilState = desc.depthEnable
-		? CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT)   // DepthEnable=TRUE, DepthFunc=LESS, WriteAll
-		: CD3DX12_DEPTH_STENCIL_DESC();               // 전부 비활성
+	if (desc.depthEnable)
+	{
+		auto depthDesc = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
+		depthDesc.DepthWriteMask = desc.depthWrite ? D3D12_DEPTH_WRITE_MASK_ALL : D3D12_DEPTH_WRITE_MASK_ZERO;
+		psoDesc.DepthStencilState = depthDesc;
+	}
+	else
+	{
+		psoDesc.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC();  // 전부 비활성
+	}
 	psoDesc.DSVFormat = (desc.depthEnable && desc.dsvFormat != EPixelFormat::Unknown)
 		? static_cast<DXGI_FORMAT>(desc.dsvFormat)
 		: DXGI_FORMAT_UNKNOWN;

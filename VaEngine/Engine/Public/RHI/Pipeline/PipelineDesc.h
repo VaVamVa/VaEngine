@@ -84,6 +84,7 @@ struct PipelineStateDesc
 	ECullMode              cullMode      = ECullMode::Back;
 	EBlendMode             blendMode     = EBlendMode::Opaque;
 	bool                   depthEnable   = false;
+	bool                   depthWrite    = true;
 	EPrimitiveTopologyType topologyType  = EPrimitiveTopologyType::Triangle;
 
 	IBindingLayout*        bindingLayout = nullptr;

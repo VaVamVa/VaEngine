@@ -1,23 +1,16 @@
 #include "../Common/Sampler.hlsli"
+#include "../Common/GBufferMaterial.hlsli"
 
 #pragma pack_matrix(row_major)
 
-// b0 — per-frame: view-projection (ForwardOpaque와 동일 슬롯)
+// b0 — per-frame: view-projection
 cbuffer CB_ViewProj : register(b0)
 {
     float4x4 gViewProj;
 };
 
-// b1 — G-Buffer 기록용 material 상수
-//       Normal Mapping / PBR 텍스처 도입 시 텍스처로 대체 예정
-cbuffer CB_GBufferMaterial : register(b1)
-{
-    float  gRoughness;
-    float  gMetallic;
-    float2 _matPad;
-};
-
-// t0 — Albedo 텍스처 (ForwardOpaque 동일 슬롯)
+// b1 — CB_GBufferMaterial (GBufferMaterial.hlsli)
+// t0 — Albedo 텍스처
 Texture2D gDiffuse : register(t0);
 
 // --- 정점 입력 (ForwardOpaque와 동일 레이아웃 — PSO 공유 가능) ---
@@ -73,15 +66,17 @@ PS_INPUT VSMain(VS_INPUT input)
 
 GBuffer_OUT PSMain(PS_INPUT input)
 {
-    float3 N      = normalize(input.normal);
-    float4 albedo = gDiffuse.Sample(LinearSampler, input.uv) * input.color;
+    float3 N        = normalize(input.normal);
+    float4 texColor = gDiffuse.Sample(LinearSampler, input.uv) * input.color;
+
+    // Cutout: alphaThreshold > 0 인 경우 반투명 픽셀 폐기
+    clip(texColor.a - gAlphaThreshold);
+
+    float3 albedo = texColor.rgb * gAlbedo.rgb;
 
     GBuffer_OUT o;
-    // RT0: Albedo. AO는 placeholder 1.0 — AO 텍스처 도입 시 샘플링으로 대체
-    o.rt0 = float4(albedo.rgb, 1.0f);
-    // RT1: Normal을 [-1,1] FLOAT 그대로 저장 (FLOAT16 포맷이므로 인코딩 불필요)
-    o.rt1 = float4(N, gRoughness);
-    // RT2: Metallic R 채널. GBA 예약
-    o.rt2 = float4(gMetallic, 0.0f, 0.0f, 0.0f);
+    o.rt0 = float4(albedo, gAO);                          // RT0: Albedo(RGB) + AO(A)
+    o.rt1 = float4(N, gRoughness);                        // RT1: Normal + Roughness
+    o.rt2 = float4(gMetallic, 0.0f, 0.0f, 0.0f);         // RT2: Metallic
     return o;
 }

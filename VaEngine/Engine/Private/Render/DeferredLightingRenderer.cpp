@@ -4,7 +4,6 @@
 #include "Render/RenderGraph.h"
 #include "Render/IRenderPass.h"
 #include "Render/ILight.h"
-#include "Render/IMaterial.h"
 #include "Scene/RenderScene.h"
 
 #include "RHI/IRenderDevice.h"
@@ -38,14 +37,14 @@ static constexpr uint32_t MAX_DL_SPOT_LIGHTS  = 4;
 
 struct DL_LightsBufferData
 {
-    DirectionalLightData dirLight;
-    PointLightData       pointLights[MAX_DL_POINT_LIGHTS];
-    SpotLightData        spotLights[MAX_DL_SPOT_LIGHTS];
-    MaterialData         material;
-    float                eyePosW[3];
-    int32_t              numPointLights;
-    int32_t              numSpotLights;
-    float                _lightPad[3];
+    DirectionalLightData dirLight;                             //   32 bytes
+    PointLightData       pointLights[MAX_DL_POINT_LIGHTS];    //  384 bytes (48 * 8)
+    SpotLightData        spotLights[MAX_DL_SPOT_LIGHTS];      //  256 bytes (64 * 4)
+    float                eyePosW[3];                          //   12 bytes
+    int32_t              numPointLights;                      //    4 bytes
+    int32_t              numSpotLights;                       //    4 bytes
+    float                _lightPad[3];                        //   12 bytes
+    // total: 704 bytes → 768 (CBV 256-aligned)
 };
 
 // ── RenderPass 정의 ────────────────────────────────────────────────────────────

@@ -29,10 +29,16 @@ void TextureUAV_DirectX::Create(IRenderDevice* device,
 	texDesc.Layout             = D3D12_TEXTURE_LAYOUT_UNKNOWN;
 	texDesc.Flags              = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS | D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET;
 
+	D3D12_CLEAR_VALUE clearVal = {};
+	clearVal.Format = dxgiFormat;
+	clearVal.Color[0] = 0.f;
+	clearVal.Color[1] = 0.f;
+	clearVal.Color[2] = 0.f;
+	clearVal.Color[3] = 1.f;
 	auto defaultHeap = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
 	if (FAILED(d3dDevice->CreateCommittedResource(
 		&defaultHeap, D3D12_HEAP_FLAG_NONE, &texDesc,
-		D3D12_RESOURCE_STATE_UNORDERED_ACCESS, nullptr, IID_PPV_ARGS(&textureResource))))
+		D3D12_RESOURCE_STATE_UNORDERED_ACCESS, &clearVal, IID_PPV_ARGS(&textureResource))))
 	{
 		throw std::runtime_error("Failed to create RWTexture resource");
 	}
