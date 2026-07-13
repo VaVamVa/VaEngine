@@ -14,5 +14,5 @@ void WO_Kachujin::Initialize(IRenderDevice* device)
     WorldAnimatedModel::Initialize(device,
         dir + "Kachujin.smesh",
         clipPaths,
-        dir + "Kachujin_Diffuse.png");
+        dir + "Kachujin.matl");
 }

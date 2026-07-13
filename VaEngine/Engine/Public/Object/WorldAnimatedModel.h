@@ -20,10 +20,11 @@ class IMaterial;
 class WorldAnimatedModel : public WorldObject
 {
 public:
+    // matlPath: .matl 텍스트 파일 경로 (diffuse_tex=/normal_tex= 파싱, 빈 문자열이면 텍스처 로드 생략)
     void Initialize(IRenderDevice* device,
                     const std::string& skmPath,
                     const std::vector<std::string>& clipPaths,
-                    const std::string& texturePath = {});
+                    const std::string& matlPath = {});
 
     void Update(float deltaTime);
 
@@ -49,6 +50,7 @@ private:
     std::unique_ptr<Skeleton>                   skeleton;
     std::vector<std::unique_ptr<SkinnedMesh>>   meshes;
     std::unique_ptr<ITexture>                   texture;
+    std::unique_ptr<ITexture>                   normalTexture;
     std::unique_ptr<IMaterial>                  material;
     std::unique_ptr<ITexture2DArray>            transformsMap;
     std::unique_ptr<IBuffer>                    tweenBuffer;

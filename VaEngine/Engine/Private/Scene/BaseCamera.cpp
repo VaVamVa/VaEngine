@@ -9,6 +9,13 @@ BaseCamera::BaseCamera(float fovY, float aspect, float nearZ, float farZ)
 	RebuildView();
 }
 
+Vector3 BaseCamera::SetPosition(const Vector3& pos)
+{
+	position = pos;
+	RebuildView();
+	return position;
+}
+
 void BaseCamera::RebuildView()
 {
 	const float sy = std::sin(yaw), cy = std::cos(yaw);

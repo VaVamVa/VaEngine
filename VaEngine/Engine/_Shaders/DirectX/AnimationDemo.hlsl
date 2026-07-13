@@ -114,7 +114,7 @@ float4 PSMain(PS_INPUT input) : SV_TARGET
         float  dist    = length(toLight);
         if (dist >= gPointLights[i].range) continue;
         float3 L        = toLight / dist;
-        float  att      = 1.0f / dot(gPointLights[i].attenuation, float3(1.0f, dist, dist * dist));
+        float  att      = CalcDistanceAttenuation(dist, gPointLights[i].range);
         float3 radiance = gPointLights[i].color * gPointLights[i].intensity * att;
         Lo += EvalBRDF(N, V, L, albedo, gRoughness, gMetallic, radiance);
     }
@@ -127,7 +127,7 @@ float4 PSMain(PS_INPUT input) : SV_TARGET
         if (dist >= gSpotLights[j].range) continue;
         float3 L    = toLight / dist;
         float  spot = pow(max(dot(-L, gSpotLights[j].direction), 0.0f), gSpotLights[j].spot);
-        float  att  = spot / dot(gSpotLights[j].attenuation, float3(1.0f, dist, dist * dist));
+        float  att  = spot * CalcDistanceAttenuation(dist, gSpotLights[j].range);
         float3 radiance = gSpotLights[j].color * gSpotLights[j].intensity * att;
         Lo += EvalBRDF(N, V, L, albedo, gRoughness, gMetallic, radiance);
     }

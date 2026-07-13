@@ -1,6 +1,6 @@
 # VaEngine — 프로젝트 현황판
 
-> 마지막 업데이트: 2026-07-06
+> 마지막 업데이트: 2026-07-13
 >
 > **[공지] 이 문서는 현황판입니다. ToDo 항목은 각 날짜의 Log 파일에만 기록합니다.**
 
@@ -13,7 +13,7 @@ DirectX12 + Vulkan 크로스 플랫폼 3D 렌더링 엔진.
 
 ---
 
-## 핵심 아키텍처 (2026-07-06 기준)
+## 핵심 아키텍처 (2026-07-13 기준)
 
 ### Execute (Engine 소유) + ApplicationManager (Application 소유)
 
@@ -111,7 +111,7 @@ VaEngine/
 
 | 프로젝트 | 타입 | 빌드 | 코드 작성 |
 |---|---|---|---|
-| Engine | Static Library | ✅ 성공 | ✅ RHI/RenderGraph/Renderer/Execute + 스켈레탈 애니메이션 + Deferred Renderer + Material 시스템(Phase 1~6) + PBR(Cook-Torrance GGX) 완료 |
+| Engine | Static Library | ✅ 성공 | ✅ RHI/RenderGraph/Renderer/Execute + 스켈레탈 애니메이션 + Deferred Renderer + Material 시스템(Phase 1~6) + PBR(Cook-Torrance GGX) + HDR/Tonemap·Normal Mapping·SSAO·Bloom·CSM Shadow·OIT 완료 |
 | Application | Static Library | ✅ 성공 | ✅ WorldObject 계층, LightManager, FreeCamera 완료 |
 | ExecWindows | Executable | ✅ 성공 | ✅ WinMain 연동 완료 |
 | VaShaderCompiler | Tool | ✅ 성공 | ✅ 오프라인 셰이더 컴파일 시스템 구축 완료 |
@@ -151,23 +151,28 @@ VaEngine/
 
 ### 8. Deferred + Forward 하이브리드 렌더링
 
-#### Windows (DX12) 기준 패스 순서
+#### Windows (DX12) 기준 패스 순서 (`SceneRenderer::AddPasses`)
 ```
 DeferredSkyPass (hdrOut 클리어) →
 BonePaletteCompute (스키닝 GPU 오프로드) →
+ShadowMapPass (CSM, 화면과 다른 해상도의 트랜지언트 Texture2DArray Depth) →
 GBufferPass (RT0 Albedo+AO / RT1 Normal+Rough / RT2 Metallic) →
-DeferredLightingPass (CS: GBuffer → hdrOut) →
-BlitPass (hdrOut → 백버퍼) →
-TransparentPass (ForwardRenderer, shared depth DepthRead) →
+SSAOPass (Raw → Blur, RT1+Depth만으로 계산) →
+DeferredLightingPass (CS: GBuffer+Shadow+IBL+SSAO → hdrOut) →
+TransparentPass (ForwardRenderer, hdrOut에 그림 · shared depth DepthRead) →
+BloomPass (BrightPass → BlurH → BlurV → Composite, hdrOut에 가산) →
+BlitPass (hdrOut → 백버퍼, Tonemap+Gamma) →
 DebugLinePass →
 DebugTextPass
 ```
 
 - **Opaque/Transparent 분기**: `RenderSortKey` bit[59](`translucent` 플래그). `GBufferRenderer`는 translucent 스킵, `ForwardRenderer::TransparentPass`가 담당.
-- **2-Pass 투명 렌더링**: `transparentBackFacePSO`(CullMode::Front) → `transparentFrontFacePSO`(CullMode::Back) 순서로 투명 오브젝트 자신의 뒷면 및 앞면을 모두 렌더링. 비볼록 교차는 OIT 확장 지점(`ResolveOIT` stub) 주석으로 표시.
+- **2-Pass 투명 렌더링**: `transparentBackFacePSO`(CullMode::Front) → `transparentFrontFacePSO`(CullMode::Back) 순서로 투명 오브젝트 자신의 뒷면 및 앞면을 모두 렌더링. Weighted Blended OIT 구현 완료(런타임 토글 없음, 상시 적용).
 - **Material 중심 렌더링 (Phase 1~6 완료)**: `IMaterial`이 GPU 버퍼 소유 (dirty flag). DrawGroup 기준 `(mesh, IMaterial*)`. `GetCullMode()` → DoubleSided PSO 선택. `GetBlendMode()` → ForwardRenderer PSO 선택. `RenderCommand.texture` 제거 (Phase 5). HLSL Phong → PBR 전면 교체 (Phase 6).
+- **Transparent는 Blit보다 먼저 hdrOut에 그린다**: Tonemap(Blit)이 Opaque+Transparent를 모두 포함한 결과에 한 번만 적용되도록 순서 고정(Plan_RenderQuality.md Phase 1-1).
 - **Read-Only DSV**: `TransparentPass` / `DebugLinePass`는 GBuffer depth를 `D3D12_DSV_FLAG_READ_ONLY_DEPTH`로 바인딩 (depth test O, write X).
-- **SkinnedMesh**: GBufferSkinned PSO로 GBuffer에 직접 쓰기. ForwardRenderer 경유 없음.
+- **SkinnedMesh**: GBufferSkinned PSO로 GBuffer에 직접 쓰기. ForwardRenderer 경유 없음. Shadow Map의 스키닝 caster도 동일 패턴(BonePaletteCompute가 ShadowMapPass보다 항상 먼저 실행).
+- **CSM (Cascaded Shadow Mapping)**: `ShadowMapRenderer`가 Directional Light 기준 최대 8캐스케이드(`kMaxCascadeCount`)를 항상 할당하고, 실제 사용 개수(`activeCascadeCount`, 1~8, 런타임 Num4/Num5 조정)만큼만 매 프레임 그린다(Mesh LOD와 동일 패턴 — 캐스케이드 수를 바꿔도 RenderGraph 리소스 재할당 없음). PSSM(Practical Split Scheme) 분할 + 카메라 서브 프러스텀 bounding-sphere 피팅, 캐스케이드 경계 smooth blend. 상세 설계·버그 수정 이력은 `2026-07-13_Q&A.md`/`2026-07-13_Log.md` 참조.
 
 ### 9. Meshless HDRi Sky Rendering
 - **Full-screen Triangle**: SV_VertexID (0,1,2) → NDC 삼각형 생성. VB/IB 없이 `DrawInstanced(3, 1)` 한 번으로 화면 전체 커버
@@ -206,11 +211,18 @@ DebugTextPass
 | [2026-05-10_Log.md](2026-05-10_Log.md) | Meshless Sky 런타임 검증, LoadFromFile narrow 전환, ASSETS_DIR 정비, Debug Text Panel 시스템, Pick Ray, Compute 인프라 + BonePalette GPU 오프로드, 3-clip BlendBones |
 | [2026-05-11_Log.md](2026-05-11_Log.md) | RenderCommand 통합(Unified Command Stream), CalculateSortKey 자동화, TransparentPass 2-패스 구성, AnimationRenderer API 동기화, RenderGraph 디버그 패널, CameraManager 접근자 확장 |
 | [2026-07-06_Log.md](2026-07-06_Log.md) | Phase 4~6 완료: 2-Pass 투명 렌더링, RenderCommand.texture 제거(Phase 5), HLSL Phong→PBR 전면 교체(Phase 6), 0x87A 크래시 2건 수정, PBR ambient 조정 |
+| [2026-07-11_Q&A.md](2026-07-11_Q&A.md) | IBL Stage B 프리필터 밉 해상도/레벨 수, BRDF LUT 크기 근거 |
+| [2026-07-11_Log.md](2026-07-11_Log.md) | Plan_RenderQuality.md 전체 구현(Pre-0~3+Phase 1-1~4: HDR/Tonemap·Normal Mapping·Shadow Stage A·Bloom), RenderGraph BaseRHIResource 리팩터링, IBL Stage B + Forward Transparent IBL 적용 |
+| [2026-07-12_Q&A.md](2026-07-12_Q&A.md) | OIT 도입 장단점·2-Pass CullMode 오류 형태, 굴절/투과색 병목 여부, 런타임 토글 가능성, D3D12 경고 정리 |
+| [2026-07-12_Log.md](2026-07-12_Log.md) | Scene Scale 단위 통일(cm→m 변환), WorldObject Local/World Transform Hierarchy, SSAO 구현, 런타임 IBL/SSAO 비교 토글, Weighted Blended OIT |
+| [2026-07-13_Q&A.md](2026-07-13_Q&A.md) | CSM 설계 Q&A — Atlas vs Texture2DArray Depth, 사이드 이펙트, 드로우콜, blend/dither, GS/HS, mip level 비교 |
+| [2026-07-13_Log.md](2026-07-13_Log.md) | CSM(Cascaded Shadow Mapping) 구현 — Texture2DArray Depth 8캐스케이드, 활성 개수 런타임 조정(Num4/5), smooth blend, 캐스케이드 색상 오버레이(Num3). 버그 3종(버퍼 재사용 타이밍·행렬 row/column 의미론·HLSL cbuffer 스칼라 배열 패킹) 발견·수정, Math 유틸 정리(World/View 축 추출 함수 분리, `InvertRigidTransform`) |
 | [Plan/Plan_Material_Driven.md](Plan/Plan_Material_Driven.md) | Material 중심 렌더링 계획서 (Phase 1~6 완료, Phase 7 Normal Mapping 대기) |
 | [Plan/Plan_Animation.md](Plan/Plan_Animation.md) | 스켈레탈 애니메이션 구현 계획 (Steps 1~11 완료) |
 | [Plan/AssetImporter.md](Plan/AssetImporter.md) | VaImportTool + 텍스처 파이프라인 구현 계획 |
 | [Plan/Meshless_Sky_Rendering.md](Plan/Meshless_Sky_Rendering.md) | Meshless HDRi Sky Rendering 구현 계획 (Steps 1~9 완료) |
 | [Plan/DebugTextRendering.md](Plan/DebugTextRendering.md) | Debug Text Rendering 구현 계획 (stb_truetype + Glyph Atlas, Steps 1~9) |
+| [Analysis/PhongToPBR_Migration.md](Analysis/PhongToPBR_Migration.md) | Phong→PBR 마이그레이션 커밋 리뷰 (2901a7c·7a59ab2·660d924): G-Buffer 설계, GGX 구현 정확성, 버퍼 레이아웃 버그 분석, 기술 부채 |
 
 ---
 

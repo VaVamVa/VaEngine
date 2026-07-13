@@ -43,21 +43,11 @@ void ScreenToRay(float screenX, float screenY,
     // 2. inv(V * P) 계산 (내부에서 처리)
     const Matrix4x4 invVP = (view * proj).Inverse();
 
-    // 3. NDC 점 → 월드 좌표 (동차 나누기 포함)
-    //    [ndcX ndcY ndcZ 1] * invVP
-    auto unproject = [&](float ndz) -> Vector3
-    {
-        const float wx = ndcX*invVP.m[0][0] + ndcY*invVP.m[1][0] + ndz*invVP.m[2][0] + invVP.m[3][0];
-        const float wy = ndcX*invVP.m[0][1] + ndcY*invVP.m[1][1] + ndz*invVP.m[2][1] + invVP.m[3][1];
-        const float wz = ndcX*invVP.m[0][2] + ndcY*invVP.m[1][2] + ndz*invVP.m[2][2] + invVP.m[3][2];
-        const float ww = ndcX*invVP.m[0][3] + ndcY*invVP.m[1][3] + ndz*invVP.m[2][3] + invVP.m[3][3];
-        const float inv = 1.0f / ww;
-        return { wx * inv, wy * inv, wz * inv };
-    };
-
+    // 3. NDC 점 → 월드 좌표 (동차 나누기 포함) — Container.h::UnprojectPoint 공용 구현 사용
+    //    (ShadowMapRenderer::ComputeCascades의 프러스텀 코너 언프로젝션과 동일 연산, 중복 제거)
     // DX12 깊이 범위 [0, 1]: z=0 → Near plane, z=1 → Far plane
-    const Vector3 nearWorld = unproject(0.0f);
-    const Vector3 farWorld  = unproject(1.0f);
+    const Vector3 nearWorld = UnprojectPoint({ ndcX, ndcY, 0.0f }, invVP);
+    const Vector3 farWorld  = UnprojectPoint({ ndcX, ndcY, 1.0f }, invVP);
 
     outOrigin = nearWorld;
     outDir    = (farWorld - nearWorld).Normalized();

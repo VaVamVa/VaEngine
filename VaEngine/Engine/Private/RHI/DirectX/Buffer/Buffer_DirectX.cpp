@@ -54,6 +54,12 @@ void Buffer_DirectX::Create(ID3D12Device* device, const BufferDesc& desc)
 	{
 		throw std::runtime_error("Failed to create buffer");
 	}
+
+	// D3D12는 버퍼 리소스에 한해 initialState 파라미터를 무시하고 항상 COMMON으로 생성한다
+	// (디버그 레이어 경고: "Buffers are effectively created in state D3D12_RESOURCE_STATE_COMMON").
+	// 요청한 usage(UAV 여부 등)와 무관하게 실제 상태는 항상 Common — 이전에는 UAV 버퍼를
+	// UnorderedAccess로 잘못 가정해, 최초 프레임의 Common→UnorderedAccess 배리어가 누락되어 있었다.
+	SetTrackedState(EResourceState::Common);
 }
 
 void* Buffer_DirectX::Map()

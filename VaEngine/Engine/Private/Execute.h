@@ -17,6 +17,8 @@
 #include "System/ITime.h"
 #include "System/TimerSystem.h"
 
+#include "Utilities/DebuggingHelper.h"  // VA_DEBUG
+
 #include <memory>
 #include <cstdint>
 
@@ -64,4 +66,9 @@ private:
 
 	SceneRenderer                    sceneRenderer;
 	RenderGraph                      renderGraph;
+
+#if VA_DEBUG
+	// 로그에서 프레임 경계를 확인하기 위한 카운터 — OnLoop() 시작 시 VA_LOG로 찍는다.
+	uint64_t                         frameNumber = 0;
+#endif
 };

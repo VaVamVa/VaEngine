@@ -11,6 +11,7 @@ class CameraManager;
 class WO_Cube;
 class WO_Tower;
 class WO_Kachujin;
+class WO_Katana;
 class LightManager;
 class ITexture;
 
@@ -27,15 +28,24 @@ private:
 	void KachujinClipTest();
 	void InitTestSkyTexture(IRenderDevice* device);
 
+	void RenderDebug();
+
 private:
 	CameraManager*	cameraManager;
 	LightManager* 	lightManager;
 
-	WO_Cube*	  	cube;
+	WO_Cube*	  	transparent_cube1;
+	WO_Cube*	  	transparent_cube2;
+	WO_Cube*	  	floor;
 	WO_Tower*		tower;
 	WO_Kachujin*	kachujin;
+	WO_Katana*		katana;
 	uint32_t		clipIndex = 0;
 	float			blendAlpha = 0;
+	bool			ssaoEnabled   = true;   // Num2 키로 토글 — 런타임 비교분석용
+	bool			iblEnabled    = true;   // Num1 키로 토글 — 런타임 비교분석용
+	bool			showCascades  = false;  // Num3 키로 토글 — CSM 캐스케이드 색상 오버레이(디버그)
+	uint32_t		activeCascadeCount = 4; // Num4(-1)/Num5(+1) 키로 조정 — CSM 활성 캐스케이드 개수(1~8)
 
 	ITexture*		skyTexture = nullptr;
 

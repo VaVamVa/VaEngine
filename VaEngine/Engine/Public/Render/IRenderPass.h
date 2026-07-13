@@ -6,11 +6,11 @@
 
 class ICommandList;
 class RenderScene;
-class IRHIResource;
+class BaseRHIResource;
 
 struct PassResourceDecl
 {
-	IRHIResource*  resource;
+	BaseRHIResource*  resource;
 	EResourceState requiredState;
 };
 

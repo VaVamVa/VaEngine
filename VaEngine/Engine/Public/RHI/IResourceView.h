@@ -9,7 +9,7 @@ class IResourceView
 public:
 	virtual ~IResourceView() = default;
 
-	virtual			IRHIResource*		GetResource() const = 0;
+	virtual			BaseRHIResource*	GetResource() const = 0;
 	virtual			EResourceViewType	GetType() const = 0;
 	virtual const	ResourceViewDesc&	GetDesc() const = 0;
 };

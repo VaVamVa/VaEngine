@@ -31,5 +31,6 @@ protected:
 
     std::vector<std::unique_ptr<MeshPrimitive>> meshes;
     std::unique_ptr<ITexture>                   texture;
+    std::unique_ptr<ITexture>                   normalTexture;
     std::unique_ptr<IMaterial>                  material;
 };

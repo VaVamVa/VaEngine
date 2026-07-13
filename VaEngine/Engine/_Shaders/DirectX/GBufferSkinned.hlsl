@@ -20,6 +20,9 @@ Texture2D gDiffuse : register(t0);
 //   Layout: BonePalette[(instanceID * MAX_MODEL_TRANSFORMS + boneIdx) * 4 + row]
 StructuredBuffer<float4> BonePalette : register(t1);
 
+// t2 — Normal Map (없으면 기본 (128,128,255) tangent-up 텍스처)
+Texture2D gNormalMap : register(t2);
+
 // ── 입력 구조체 ──────────────────────────────────────────────────────────────
 
 struct VS_INPUT
@@ -31,6 +34,7 @@ struct VS_INPUT
     float2 uv         : TEXCOORD;
     uint4  boneIndex  : BONEINDEX;
     float4 boneWeight : BONEWEIGHT;
+    float4 tangent    : TANGENT;   // xyz + handedness(w)
     // slot 1 — per instance (world matrix rows)
     float4 row0       : INSTANCETRANSFORM0;
     float4 row1       : INSTANCETRANSFORM1;
@@ -40,17 +44,18 @@ struct VS_INPUT
 
 struct PS_INPUT
 {
-    float4 pos    : SV_POSITION;
-    float3 wPos   : TEXCOORD0;
-    float3 normal : TEXCOORD1;
-    float4 color  : TEXCOORD2;
-    float2 uv     : TEXCOORD3;
+    float4 pos     : SV_POSITION;
+    float3 wPos    : TEXCOORD0;
+    float3 normal  : TEXCOORD1;
+    float4 color   : TEXCOORD2;
+    float2 uv      : TEXCOORD3;
+    float4 tangent : TEXCOORD4;  // xyz + handedness(w)
 };
 
 // ── MRT 출력 ─────────────────────────────────────────────────────────────────
 // RT0: R8G8B8A8_UNORM    — Albedo(RGB) + AO(A)
 // RT1: R16G16B16A16_FLOAT — WorldNormal(XYZ) + Roughness(W)
-// RT2: R8G8B8A8_UNORM    — Metallic(R) + 예약(GBA)
+// RT2: R8G8B8A8_UNORM    — Metallic(R) + Emissive(GBA)
 
 struct GBuffer_OUT
 {
@@ -84,16 +89,18 @@ PS_INPUT VSMain(VS_INPUT input, uint instanceID : SV_InstanceID)
         skinMat += boneMat * input.boneWeight[i];
     }
 
-    float4x4 world        = float4x4(input.row0, input.row1, input.row2, input.row3);
-    float4   skinnedPos    = mul(float4(input.pos,    1.0f), skinMat);
-    float4   skinnedNormal = mul(float4(input.normal, 0.0f), skinMat);
+    float4x4 world         = float4x4(input.row0, input.row1, input.row2, input.row3);
+    float4   skinnedPos     = mul(float4(input.pos,     1.0f), skinMat);
+    float4   skinnedNormal  = mul(float4(input.normal,  0.0f), skinMat);
+    float4   skinnedTangent = mul(float4(input.tangent.xyz, 0.0f), skinMat);
 
     PS_INPUT o;
-    o.pos    = mul(mul(skinnedPos,    world), gViewProj);
-    o.wPos   = mul(skinnedPos,    world).xyz;
-    o.normal = normalize(mul(skinnedNormal, world).xyz);
-    o.color  = input.color;
-    o.uv     = input.uv;
+    o.pos     = mul(mul(skinnedPos,    world), gViewProj);
+    o.wPos    = mul(skinnedPos,    world).xyz;
+    o.normal  = normalize(mul(skinnedNormal, world).xyz);
+    o.color   = input.color;
+    o.uv      = input.uv;
+    o.tangent = float4(normalize(mul(skinnedTangent, world).xyz), input.tangent.w);
     return o;
 }
 
@@ -108,9 +115,16 @@ GBuffer_OUT PSMain(PS_INPUT input)
 
     float3 albedo = texColor.rgb * gAlbedo.rgb;
 
+    float3 T = normalize(input.tangent.xyz - N * dot(N, input.tangent.xyz));
+    float3 B = cross(N, T) * input.tangent.w;
+    float3x3 TBN = float3x3(T, B, N);
+
+    float3 normalSample = gNormalMap.Sample(LinearSampler, input.uv).rgb * 2.0f - 1.0f;
+    float3 worldNormal   = normalize(mul(normalSample, TBN));
+
     GBuffer_OUT o;
     o.rt0 = float4(albedo, gAO);
-    o.rt1 = float4(N, gRoughness);
-    o.rt2 = float4(gMetallic, 0.0f, 0.0f, 0.0f);
+    o.rt1 = float4(worldNormal, gRoughness);
+    o.rt2 = float4(gMetallic, gEmissive);
     return o;
 }

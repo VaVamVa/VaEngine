@@ -67,6 +67,34 @@ void PipelineState_DirectX::Create(ID3D12Device* device, const PipelineStateDesc
 		rt.BlendOpAlpha         = D3D12_BLEND_OP_ADD;
 		rt.RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;
 	}
+	else if (desc.blendMode == EBlendMode::OITAccumulate)
+	{
+		// Weighted Blended OIT — RT0(accum)은 가산, RT1(revealage)은 곱셈으로 동시에 블렌드해야
+		// 해서 IndependentBlendEnable이 필요하다(이 조합이 이 엔진에서 유일한 요구 사례).
+		blendDesc.IndependentBlendEnable = TRUE;
+
+		// RT0 — accum: 셰이더가 이미 weight를 곱해 내보내므로 단순 가산(ONE, ONE)
+		auto& rt0                = blendDesc.RenderTarget[0];
+		rt0.BlendEnable          = TRUE;
+		rt0.SrcBlend             = D3D12_BLEND_ONE;
+		rt0.DestBlend            = D3D12_BLEND_ONE;
+		rt0.BlendOp              = D3D12_BLEND_OP_ADD;
+		rt0.SrcBlendAlpha        = D3D12_BLEND_ONE;
+		rt0.DestBlendAlpha       = D3D12_BLEND_ONE;
+		rt0.BlendOpAlpha         = D3D12_BLEND_OP_ADD;
+		rt0.RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;
+
+		// RT1 — revealage: dst_new = dst_old * src(=1-alpha), (1,1,1,1)에서 시작해 Π(1-alpha_i)로 수렴
+		auto& rt1                = blendDesc.RenderTarget[1];
+		rt1.BlendEnable          = TRUE;
+		rt1.SrcBlend             = D3D12_BLEND_ZERO;
+		rt1.DestBlend            = D3D12_BLEND_SRC_COLOR;
+		rt1.BlendOp              = D3D12_BLEND_OP_ADD;
+		rt1.SrcBlendAlpha        = D3D12_BLEND_ZERO;
+		rt1.DestBlendAlpha       = D3D12_BLEND_SRC_ALPHA;
+		rt1.BlendOpAlpha         = D3D12_BLEND_OP_ADD;
+		rt1.RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;
+	}
 	psoDesc.BlendState = blendDesc;
 	if (desc.depthEnable)
 	{

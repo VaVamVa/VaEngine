@@ -10,5 +10,6 @@ struct SkinnedVertex
     float    uv[2];          // offset 40
     uint32_t boneIndex[4];   // offset 48
     float    boneWeight[4];  // offset 64
-    // stride: 80 bytes
+    float    tangent[4];     // offset 80 — xyz + handedness(w)
+    // stride: 96 bytes
 };

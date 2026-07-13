@@ -172,6 +172,9 @@ struct Matrix4x4
     // Vulkan +Y 하방 NDC 사용 시 m[1][1]을 부호 반전할 것
     static Matrix4x4 PerspectiveFovRH(float fovY, float aspect, float nearZ, float farZ);
 
+    // LH Orthographic (DirectX: 깊이 [0,1]) — Directional Light Shadow Map 등
+    static Matrix4x4 OrthographicLH(float width, float height, float nearZ, float farZ);
+
     static Matrix4x4 Lerp(const Matrix4x4& a, const Matrix4x4& b, float t);
 };
 
@@ -183,6 +186,41 @@ struct Matrix4x4
 Vector3 TransformPoint    (const Vector3& v, const Matrix4x4& m);
 // 방향 변환 (w=0, 이동 제외)
 Vector3 TransformDirection(const Vector3& v, const Matrix4x4& m);
+// 비-아핀(투영 포함) 변환 + 동차 나누기 — NDC/clip space 점을 invViewProj로 월드 스페이스로 되돌릴 때 사용.
+// TransformPoint는 w=1 고정(아핀 전용)이라 투영 행렬에는 못 쓴다(w를 직접 계산해야 함).
+Vector3 UnprojectPoint    (const Vector3& ndc, const Matrix4x4& invViewProj);
+
+// ── World 행렬(local→world) 축/위치 추출 ─────────────────────────────────────────
+// row-vector 컨벤션의 local→world 행렬(Translation/Scale/RotationX·Y·Z/RotationQuat로 구성된
+// WorldObject::GetWorldMatrix() 등)에서 축/위치를 직접 추출(row0=Right, row1=Up, row2=Forward,
+// row3=Translation) — 로컬 축 벡터(1,0,0) 등을 이 행렬로 변환하면 그 결과가 해당 row에 나오기 때문.
+// Decompose()보다 가벼움(스케일 계산 없이 필요한 축만 읽음) — 단, 행렬에 스케일이 섞여 있으면
+// 반환값이 단위 벡터가 아닐 수 있으므로 필요 시 호출부에서 직접 Normalized() 적용.
+//
+// 주의 — LookAtLH/LookAtRH가 만드는 view 행렬(world→view, 변환 방향이 반대)에는 쓰면 안 된다.
+// 아래 GetView* 함수를 대신 쓸 것(260713-CompactLog#7 참조 — 이 자리의 함수를 view 행렬에 잘못
+// 적용해 CSM 캐스케이드 선택이 틀어진 버그가 있었음).
+inline Vector3 GetWorldRight(const Matrix4x4& worldMatrix)       { return { worldMatrix.m[0][0], worldMatrix.m[0][1], worldMatrix.m[0][2] }; }
+inline Vector3 GetWorldUp(const Matrix4x4& worldMatrix)          { return { worldMatrix.m[1][0], worldMatrix.m[1][1], worldMatrix.m[1][2] }; }
+inline Vector3 GetWorldForward(const Matrix4x4& worldMatrix)     { return { worldMatrix.m[2][0], worldMatrix.m[2][1], worldMatrix.m[2][2] }; }
+inline Vector3 GetWorldTranslation(const Matrix4x4& worldMatrix) { return { worldMatrix.m[3][0], worldMatrix.m[3][1], worldMatrix.m[3][2] }; }
+
+// ── View 행렬(world→view) 축 추출 ────────────────────────────────────────────────
+// LookAtLH/LookAtRH가 만드는 view 행렬에서 "월드 공간 기준" 카메라 축을 직접 추출 — 변환 방향이
+// World 쪽과 반대라 축이 row가 아니라 column에 저장된다(row-vector 컨벤션에서 v_out.x = dot(v_in,
+// column0)이므로 column0=xAxis, column2=zAxis). eye(카메라 위치)는 이 방식으로 값싸게 못 뽑는다
+// (row3는 -axis·eye라 위치가 아님) — 필요하면 CameraData::eyePos 등 원본 값을 쓰거나
+// InvertRigidTransform()으로 만든 행렬에 GetWorldTranslation을 적용할 것.
+inline Vector3 GetViewRight(const Matrix4x4& viewMatrix)   { return { viewMatrix.m[0][0], viewMatrix.m[1][0], viewMatrix.m[2][0] }; }
+inline Vector3 GetViewUp(const Matrix4x4& viewMatrix)      { return { viewMatrix.m[0][1], viewMatrix.m[1][1], viewMatrix.m[2][1] }; }
+inline Vector3 GetViewForward(const Matrix4x4& viewMatrix) { return { viewMatrix.m[0][2], viewMatrix.m[1][2], viewMatrix.m[2][2] }; }
+
+// View(world→view) 행렬을 View→World로 뒤집는다. LookAtLH/RH가 만든, 스케일 없는 강체변환(회전+이동)
+// 전용 — 회전부는 전치(직교 행렬이라 역행렬=전치), 이동은 직교 기저 성질로 재계산해 일반
+// Matrix4x4::Inverse()(Gauss-Jordan 소거법)보다 훨씬 저렴하다. 결과 행렬은 World 행렬과 동일한
+// row 레이아웃이라 GetWorldRight/Up/Forward/Translation을 그대로 적용할 수 있다(예: 카메라
+// 월드 위치가 필요하면 `GetWorldTranslation(InvertRigidTransform(viewMatrix))`).
+Matrix4x4 InvertRigidTransform(const Matrix4x4& viewMatrix);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // DirectX 상호 변환

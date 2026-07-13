@@ -13,6 +13,7 @@
 #include "WorldObjects/WO_Cube.h"
 #include "WorldObjects/WO_Tower.h"
 #include "WorldObjects/WO_Kachujin.h"
+#include "WorldObjects/WO_Katana.h"
 
 #include "RHI/IRenderDevice.h"
 #include "RHI/Texture/ITexture.h"
@@ -23,6 +24,8 @@
 #include "Math/Viewport.h"
 #include "System/TimerSystem.h"
 
+#include <algorithm>
+
 void VaProgramName::OnInitialize(IRenderDevice* device)
 {
 	cameraManager = new CameraManager();
@@ -30,12 +33,11 @@ void VaProgramName::OnInitialize(IRenderDevice* device)
 
 	kachujin = new WO_Kachujin();
 	kachujin->Initialize(device);
-	kachujin->transform.SetPosition(Vector3(0.0f, 0.0f, 0.0f));
-	kachujin->transform.SetScale(Vector3(0.01f, 0.01f, 0.01f));
+	kachujin->transform.SetPosition(Vector3(-5.0f, 0.0f, 0.0f));
 	clipIndex = 0;
 	blendAlpha = 0;
 	VA_LOG("Asset", std::format("Kachujin loaded: {} clips", kachujin->GetClipCount()));
-	
+
 	InputContext animCtx("AnimationTest");
 	animCtx.MapKeyBool("BlendAlphaTest", EKeyCode::Z, EInputTrigger::Down, [this]()
 		{
@@ -49,17 +51,33 @@ void VaProgramName::OnInitialize(IRenderDevice* device)
 		});
 	kachujin->SetBlendAlpha(blendAlpha);
 
-	cube = new WO_Cube();
-	cube->Initialize(device);
-	cube->transform.SetPosition(Vector3(0.f, 6.f, 0.f));
-	cube->renderDesc.layer = 1;
-	VA_LOG("Asset", "WO_Cube initialized");
+
+
+	transparent_cube1 = new WO_Cube();
+	transparent_cube1->Initialize(device);
+	transparent_cube1->transform.SetPosition(Vector3(-5.0f, 1.0f, -2.0f));
+	transparent_cube2 = new WO_Cube();
+	transparent_cube2->Initialize(device);
+	transparent_cube2->transform.SetPosition(Vector3(-5.0f, 1.f, -1.0f));
+	transparent_cube2->GetMaterial()->SetAlbedo(.0f, 0.0f, 1.0f, 0.5f);
+	VA_LOG("Asset", "Transparent_Cubes initialized");
 
 	tower = new WO_Tower();
 	tower->Initialize(device);
-	tower->transform.SetPosition(Vector3(5.0f, 0.0f, 0.0f));
-	tower->transform.SetEulerDeg(0.f, 90.f, 90.f);
+	tower->transform.SetPosition(Vector3(0.0f, 0.0f, 0.0f));
+	tower->transform.SetEulerDeg(0.f, 90.f, -90.f);
 	VA_LOG("Asset", "WO_Tower initialized");
+
+	// Shadow 확인용 바닥 — WO_Cube는 기본적으로 반투명(AlphaBlend)이라 바닥에는 그림자가 표시되지
+	// 않으므로(Transparent 경로는 shadow map을 샘플링하지 않음) Opaque로 재설정한다.
+	// 20x20 크기, 윗면이 Y=0에 오도록 배치해 Kachujin/Tower의 기존 Y=0 배치를 그대로 그 위에 세운다.
+	floor = new WO_Cube();
+	floor->Initialize(device);
+	floor->transform.SetPosition(Vector3(0.f, -0.25f, 0.f));
+	floor->transform.SetScale(Vector3(20.f, 0.5f, 20.f));
+	floor->GetMaterial()->SetBlendMode(EBlendMode::Opaque);
+	//floor->GetMaterial()->SetAlbedo(1.0f, 1.0f, 1.0f, 1.0f);
+	VA_LOG("Asset", "Floor initialized");
 	
 	skyTexture = device->CreateTextureFloat().release();
 	skyTexture->LoadFromFile(device, ASSETS_DIR "HDR/sundowner_overlook_4k.hdr");
@@ -68,17 +86,16 @@ void VaProgramName::OnInitialize(IRenderDevice* device)
 	lightManager = new LightManager();
 	lightManager->GetDirectionalLight()->SetEnabled(true);
 	lightManager->GetDirectionalLight()->SetColor(1.0f, 1.0f, 0.95f);
-	lightManager->GetDirectionalLight()->SetIntensity(3.0f);
+	lightManager->GetDirectionalLight()->SetIntensity(1.f);
+	lightManager->GetDirectionalLight()->SetDirection( -0.5f, -1.0f, -0.5f);
 	VA_LOG("Light", "Directional light enabled");
 
 	IPointLight* pt = lightManager->AddPointLight();
 	pt->SetPosition(2.0f, -2.0f, -2.0f);
 	pt->SetRange(15.0f);
-	pt->SetAttenuation(1.0f, 0.09f, 0.032f);
 	pt->SetColor(1.0f, 0.8f, 0.6f);
 	pt->SetIntensity(3.0f);
 	pt->SetEnabled(false);
-
 
 	InputContext pickCtx("CursorPick");
 	pickCtx.MapPointerButton("Pick", EPointerButton::Primary, EInputTrigger::Down, [this]() { PointerPickTest(); });
@@ -90,12 +107,16 @@ void VaProgramName::OnInitialize(IRenderDevice* device)
 		kachujin->PlayTween(clipIndex, 0.3f);
 		//kachujin->PlayBlend(clipIndex, (clipIndex + 1) % kachujin->GetClipCount(), (clipIndex + 2) % kachujin->GetClipCount(), 0.5f, 0.5f, 0.5f);
 	});
+
+	RenderDebug();
+
 	VA_LOG("VaProgramName", "Initialized VaProgramName");
 }
 
 void VaProgramName::OnUpdate(float deltaTime)
 {
-	cube->transform.Rotate(Vector3::Up, Math::PI * 0.5f * deltaTime);
+	transparent_cube1->transform.Rotate(Vector3::Up, Math::PI * 0.5f * deltaTime);
+	transparent_cube2->transform.Rotate(Vector3::Up, - Math::PI * 0.5f * deltaTime);
 	kachujin->Update(deltaTime);
 	cameraManager->OnUpdate(deltaTime);
 
@@ -110,19 +131,32 @@ void VaProgramName::OnUpdate(float deltaTime)
 	VA_DRAW_PANEL(4, std::format("Yaw: {:.1f}  Pitch: {:.1f}", Math::ToDegree(cameraManager->GetYaw()), Math::ToDegree(cameraManager->GetPitch())));
 	VA_DRAW_PANEL(5, std::format("BlendAlpha: {:.2f}", blendAlpha));
 	VA_DRAW_PANEL(6, std::format("Clip[{}]: {}", clipIndex, kachujin->GetClipName(clipIndex)));
+	VA_DRAW_PANEL(7, std::format(
+		"IBL: {}  |  SSAO: {}"
+		, iblEnabled ? "ON" : "OFF", ssaoEnabled ? "ON" : "OFF"
+	));
+	VA_DRAW_PANEL(8, std::format("Cascades: {} (Num4-/Num5+)  ShowCascades: {}",
+		activeCascadeCount, showCascades ? "ON" : "OFF"));
 #endif
 }
 
 void VaProgramName::SubmitRenderState(RenderScene* scene)
 {
 	scene->SetSkybox(skyTexture);
+	scene->SetSSAOEnabled(ssaoEnabled);
+	scene->SetIBLEnabled(iblEnabled);
+	scene->SetShowCascades(showCascades);
+	scene->SetActiveCascadeCount(activeCascadeCount);
 
 	lightManager->Submit(scene);
 	cameraManager->SubmitRenderState(scene);
 
-	cube->AddToScene(*scene);
+	transparent_cube1->AddToScene(*scene);
+	transparent_cube2->AddToScene(*scene);
+	floor->AddToScene(*scene);
 	tower->AddToScene(*scene);
 	kachujin->AddToScene(*scene);
+	//katana->AddToScene(*scene);
 }
 
 void VaProgramName::OnDestroy()
@@ -136,9 +170,12 @@ void VaProgramName::OnDestroy()
 	cameraManager->OnDestroy();
 
 	SAFE_DELETE(cameraManager);
-	SAFE_DELETE(cube);
+	SAFE_DELETE(transparent_cube1);
+	SAFE_DELETE(transparent_cube2);
+	SAFE_DELETE(floor);
 	SAFE_DELETE(tower);
 	SAFE_DELETE(kachujin);
+	//SAFE_DELETE(katana);
 	SAFE_DELETE(lightManager);
 	SAFE_DELETE(skyTexture);
 }
@@ -204,4 +241,32 @@ void VaProgramName::InitTestSkyTexture(IRenderDevice* device)
 	};
 	skyTexture = device->CreateTextureFloat().release();
 	skyTexture->LoadFromMemory(device, pixels, W, H);
+}
+
+// Num1/Num2/Num3 — IBL/SSAO/CSM 캐스케이드 오버레이 on/off 런타임 토글(비교분석·디버그용)
+// Num4/Num5 — CSM 활성 캐스케이드 개수 -1/+1(1~8, ShadowMapRenderer::kMaxCascadeCount 범위)
+void VaProgramName::RenderDebug()
+{
+	InputContext debugCtx("RenderDebug");
+	debugCtx.MapKeyBool("ToggleIBL", EKeyCode::Num1, EInputTrigger::Down, [this]()
+		{
+			iblEnabled = !iblEnabled;
+		});
+	debugCtx.MapKeyBool("ToggleSSAO", EKeyCode::Num2, EInputTrigger::Down, [this]()
+		{
+			ssaoEnabled = !ssaoEnabled;
+		});
+	debugCtx.MapKeyBool("ToggleCascades", EKeyCode::Num3, EInputTrigger::Down, [this]()
+		{
+			showCascades = !showCascades;
+		});
+	debugCtx.MapKeyBool("DecreaseCascadeCount", EKeyCode::Num4, EInputTrigger::Down, [this]()
+		{
+			activeCascadeCount = std::max(1u, activeCascadeCount - 1);
+		});
+	debugCtx.MapKeyBool("IncreaseCascadeCount", EKeyCode::Num5, EInputTrigger::Down, [this]()
+		{
+			activeCascadeCount = std::min(8u, activeCascadeCount + 1);
+		});
+	Locator<InputSystem>::Get().PushContext(debugCtx);
 }

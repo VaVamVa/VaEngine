@@ -27,6 +27,7 @@ enum class EPixelFormat : uint32_t
 	R32G32B32_FLOAT			= 6,
 	R16G16B16A16_FLOAT		= 10,
 	R32G32_FLOAT			= 16,
+	D32_FLOAT				= 40,
 	R32_FLOAT				= 41,
 	R8G8B8A8_UNORM			= 28,
 	D24_UNORM_S8_UINT		= 45,
@@ -91,7 +92,11 @@ enum class EResourceState : uint32_t
 	ResolveDest					= 1 << 12,
 	ResolveSource				= 1 << 13,
 	RaytracingAcceleration		= 1 << 14,
-	Present						= 1 << 15
+	Present						= 1 << 15,
+
+	// BaseRHIResource 기본값 — 각 구현체 Create()가 실제 상태로 갱신해야 한다.
+	// RenderGraph::Compile()이 Compile 시점에 이 값을 만나면 즉시 assert(초기 상태 설정 누락).
+	Uninitialized				= 1 << 16
 };
 
 extern "C++" {
@@ -122,7 +127,7 @@ struct ResourceViewDesc
 struct ResourceBarrier
 {
 	// TODO: Transition, Aliasing, UAV 등 다양한 Barrier 유형을 지원하기 위해 구조체 확장 필요
-	class IRHIResource*		resource;
+	class BaseRHIResource*		resource;
 	// ResourceBarrier는 명령 리스트에 기록되는 시점에 리소스의 상태가 beforeState에서 afterState로 전환된다고 가정합니다.
 	EResourceState			beforeState;
 	// afterState는 beforeState와 다른 상태여야 합니다. (예: RenderTarget -> Present)

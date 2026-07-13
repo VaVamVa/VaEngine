@@ -41,7 +41,7 @@ struct GBufferPass : IRenderPass
         writes.push_back({ renderer->GetRT0(),                  EResourceState::RenderTarget });
         writes.push_back({ renderer->GetRT1(),                  EResourceState::RenderTarget });
         writes.push_back({ renderer->GetRT2(),                  EResourceState::RenderTarget });
-        writes.push_back({ renderer->GetDepth()->GetResource(), EResourceState::DepthWrite   });
+        writes.push_back({ renderer->GetDepth(),                EResourceState::DepthWrite   });
         // BonePalette: compute UAV write → VS SRV read barrier 자동 삽입
         for (auto* m : skinnedMeshes)
             reads.push_back({ m->GetBonePaletteBuffer(), EResourceState::NonPixelShaderResource });
@@ -107,13 +107,15 @@ void GBufferRenderer::Initialize(IRenderDevice* device, IDepthBuffer* sharedDept
     hdrOut = device->CreateTextureUAV();
     hdrOut->Create(device, EPixelFormat::R16G16B16A16_FLOAT, width, height);
 
-    // 바인딩 레이아웃 (b0: ViewProj/VS, b1: Material/PS, t0: Diffuse/PS)
+    // 바인딩 레이아웃 (b0: ViewProj/VS, b1: Material/PS, t0: Diffuse/PS, t1: Normal Map/PS)
+    // 새 슬롯은 항상 끝에 append — 기존 root index(0~2) 불변 보장
     BindingEntry bindings[] = {
         { EBindingType::ConstantBuffer, 0, EShaderStage::Vertex },
         { EBindingType::ConstantBuffer, 1, EShaderStage::Pixel  },
         { EBindingType::Texture,        0, EShaderStage::Pixel  },
+        { EBindingType::Texture,        1, EShaderStage::Pixel  },  // root 3 — Normal Map
     };
-    bindingLayout = device->CreateBindingLayout(bindings, 3);
+    bindingLayout = device->CreateBindingLayout(bindings, 4);
 
     shader = device->CreateShader(shaderDesc);
 
@@ -123,6 +125,7 @@ void GBufferRenderer::Initialize(IRenderDevice* device, IDepthBuffer* sharedDept
         { "NORMAL",            0, EPixelFormat::R32G32B32_FLOAT,    12, 0, false },
         { "COLOR",             0, EPixelFormat::R32G32B32A32_FLOAT, 24, 0, false },
         { "TEXCOORD",          0, EPixelFormat::R32G32_FLOAT,       40, 0, false },
+        { "TANGENT",           0, EPixelFormat::R32G32B32A32_FLOAT, 48, 0, false },
         { "INSTANCETRANSFORM", 0, EPixelFormat::R32G32B32A32_FLOAT, 0,  1, true  },
         { "INSTANCETRANSFORM", 1, EPixelFormat::R32G32B32A32_FLOAT, 16, 1, true  },
         { "INSTANCETRANSFORM", 2, EPixelFormat::R32G32B32A32_FLOAT, 32, 1, true  },
@@ -131,7 +134,7 @@ void GBufferRenderer::Initialize(IRenderDevice* device, IDepthBuffer* sharedDept
     PipelineStateDesc psoDesc = {
         .shader           = shader.get(),
         .vertexInputs     = inputs,
-        .vertexInputCount = 8,
+        .vertexInputCount = 9,
         .rtvFormats       = { EPixelFormat::R8G8B8A8_UNORM,
                               EPixelFormat::R16G16B16A16_FLOAT,
                               EPixelFormat::R8G8B8A8_UNORM },
@@ -164,19 +167,26 @@ void GBufferRenderer::Initialize(IRenderDevice* device, IDepthBuffer* sharedDept
     constexpr uint32_t white = 0xFFFFFFFF;
     defaultTexture = device->CreateTexture();
     defaultTexture->LoadFromMemory(device, &white, 1, 1);
+
+    // normal map 폴백용 1×1 tangent-up 텍스처 — RGB(128,128,255) → decode 시 (0,0,1)에 근접
+    constexpr uint32_t flatNormal = 0xFFFF8080;  // A=FF,B=FF,G=80,R=80
+    defaultNormalTexture = device->CreateTexture();
+    defaultNormalTexture->LoadFromMemory(device, &flatNormal, 1, 1);
 }
 
 // ── InitializeSkinned ──────────────────────────────────────────────────────────
 
 void GBufferRenderer::InitializeSkinned(IRenderDevice* device, const ShaderDesc& shaderDesc)
 {
+    // 새 슬롯은 항상 끝에 append — BonePalette(root 3) 등 기존 root index 불변 보장
     BindingEntry bindings[] = {
         { EBindingType::ConstantBuffer, 0, EShaderStage::Vertex },  // b0 ViewProj
         { EBindingType::ConstantBuffer, 1, EShaderStage::Pixel  },  // b1 GBufferMaterial
         { EBindingType::Texture,        0, EShaderStage::Pixel  },  // t0 Diffuse
         { EBindingType::BufferSRV,      1, EShaderStage::Vertex },  // t1 BonePalette
+        { EBindingType::Texture,        2, EShaderStage::Pixel  },  // root 4 — t2 Normal Map
     };
-    skinnedBindingLayout = device->CreateBindingLayout(bindings, 4);
+    skinnedBindingLayout = device->CreateBindingLayout(bindings, 5);
 
     skinnedShader = device->CreateShader(shaderDesc);
 
@@ -187,6 +197,7 @@ void GBufferRenderer::InitializeSkinned(IRenderDevice* device, const ShaderDesc&
         { "TEXCOORD",          0, EPixelFormat::R32G32_FLOAT,       40, 0, false },
         { "BONEINDEX",         0, EPixelFormat::R32G32B32A32_UINT,  48, 0, false },
         { "BONEWEIGHT",        0, EPixelFormat::R32G32B32A32_FLOAT, 64, 0, false },
+        { "TANGENT",           0, EPixelFormat::R32G32B32A32_FLOAT, 80, 0, false },
         { "INSTANCETRANSFORM", 0, EPixelFormat::R32G32B32A32_FLOAT, 0,  1, true  },
         { "INSTANCETRANSFORM", 1, EPixelFormat::R32G32B32A32_FLOAT, 16, 1, true  },
         { "INSTANCETRANSFORM", 2, EPixelFormat::R32G32B32A32_FLOAT, 32, 1, true  },
@@ -195,7 +206,7 @@ void GBufferRenderer::InitializeSkinned(IRenderDevice* device, const ShaderDesc&
     PipelineStateDesc psoDesc = {
         .shader           = skinnedShader.get(),
         .vertexInputs     = inputs,
-        .vertexInputCount = 10,
+        .vertexInputCount = 11,
         .rtvFormats       = { EPixelFormat::R8G8B8A8_UNORM,
                               EPixelFormat::R16G16B16A16_FLOAT,
                               EPixelFormat::R8G8B8A8_UNORM },
@@ -297,10 +308,13 @@ void GBufferRenderer::RenderGBuffer(ICommandList* cmdList, const RenderScene& sc
                     cmdList->SetConstantBuffer(mat->GetBuffer(), 1);    // root 1 → b1
                     ITexture* albedo = mat->GetAlbedoTexture();
                     (albedo ? albedo : defaultTexture.get())->Bind(cmdList, 2);  // root 2 → t0
+                    ITexture* normalMap = mat->GetNormalTexture();
+                    (normalMap ? normalMap : defaultNormalTexture.get())->Bind(cmdList, 3);  // root 3 → t1
                 }
                 else
                 {
                     defaultTexture->Bind(cmdList, 2);
+                    defaultNormalTexture->Bind(cmdList, 3);
                 }
                 boundMat = mat;
             }
@@ -349,10 +363,13 @@ void GBufferRenderer::RenderGBuffer(ICommandList* cmdList, const RenderScene& sc
                 cmdList->SetConstantBuffer(cmd.material->GetBuffer(), 1);   // root 1 → b1
                 ITexture* albedo = cmd.material->GetAlbedoTexture();
                 (albedo ? albedo : defaultTexture.get())->Bind(cmdList, 2); // root 2 → t0
+                ITexture* normalMap = cmd.material->GetNormalTexture();
+                (normalMap ? normalMap : defaultNormalTexture.get())->Bind(cmdList, 4); // root 4 → t2
             }
             else
             {
                 defaultTexture->Bind(cmdList, 2);
+                defaultNormalTexture->Bind(cmdList, 4);
             }
             boundSkinnedMat = cmd.material;
         }

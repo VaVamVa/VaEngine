@@ -16,14 +16,31 @@
 
 #include <algorithm>
 #include <filesystem>
+#include <fstream>
 #include <unordered_map>
 #include <vector>
 #include <string>
 
+// 최소 구현 — 라인 스캔 방식. 텍스처 슬롯이 더 늘어나면 key-value 파서로 일반화
+// (Agent/AgentLog/Plan/Refactoring_At260711.md 항목 3 참조. WorldModel.cpp::ParseMatlKey와 동일 패턴)
+// 텍스처 경로뿐 아니라 scale= 같은 스칼라 값도 동일하게 raw string으로 반환.
+static std::string ParseMatlKey(const std::string& matlPath, const std::string& key)
+{
+    std::ifstream f(matlPath);
+    std::string line;
+    const std::string prefix = key + "=";
+    while (std::getline(f, line))
+    {
+        if (line.rfind(prefix, 0) == 0)
+            return line.substr(prefix.size());
+    }
+    return {};
+}
+
 void WorldAnimatedModel::Initialize(IRenderDevice* device,
                                      const std::string& skmPath,
                                      const std::vector<std::string>& clipPaths,
-                                     const std::string& texturePath)
+                                     const std::string& matlPath)
 {
     // 스켈레톤 + 스키닝 메시 로드
     SkmLoadResult result = SkmLoader::Load(skmPath);
@@ -52,12 +69,32 @@ void WorldAnimatedModel::Initialize(IRenderDevice* device,
     material = std::make_unique<Material>();
     material->Initialize(device);
 
-    // Diffuse 텍스처 로드
-    if (!texturePath.empty())
+    // .matl 파싱 — diffuse_tex= / normal_tex= / scale=
+    if (!matlPath.empty())
     {
-        texture = device->CreateTexture();
-        texture->LoadFromFile(device, texturePath.c_str());
-        material->SetAlbedoTexture(texture.get());
+        const std::filesystem::path matlDir = std::filesystem::path(matlPath).parent_path();
+
+        const std::string diffuseTexName = ParseMatlKey(matlPath, "diffuse_tex");
+        if (!diffuseTexName.empty())
+        {
+            const std::string spath = (matlDir / diffuseTexName).string();
+            texture = device->CreateTexture();
+            texture->LoadFromFile(device, spath.c_str());
+            material->SetAlbedoTexture(texture.get());
+        }
+
+        const std::string scaleStr = ParseMatlKey(matlPath, "scale");
+        if (!scaleStr.empty())
+            transform.SetScale(std::stof(scaleStr));
+
+        const std::string normalTexName = ParseMatlKey(matlPath, "normal_tex");
+        if (!normalTexName.empty())
+        {
+            const std::string npath = (matlDir / normalTexName).string();
+            normalTexture = device->CreateTexture();
+            normalTexture->LoadFromFile(device, npath.c_str());
+            material->SetNormalTexture(normalTexture.get());
+        }
     }
 
     // 본 변환 행렬을 Texture2DArray에 굽기
@@ -169,7 +206,7 @@ void WorldAnimatedModel::Update(float deltaTime)
 
 void WorldAnimatedModel::Impl_AddToScene(RenderScene& scene) const
 {
-    const Matrix4x4 world = transform.GetMatrix();
+    const Matrix4x4 world = GetWorldMatrix();
     const uint32_t  count = animController.InstanceCount();
 
     for (const auto& mesh : meshes)

@@ -1,6 +1,7 @@
 #include "Mesh/CubeShape.h"
 
 #include <cstring>
+#include <iterator>
 
 // 각 면을 독립적인 4개 정점으로 구성 (총 24 vertices, 36 indices)
 // 면 별 UV 독립, 텍스처 매핑 정확도 보장
@@ -55,6 +56,8 @@ MeshData CubeShape::Build() const
         indices[f * 6 + 4] = b + 2;
         indices[f * 6 + 5] = b + 3;
     }
+
+    ComputeTangents(verts, std::size(verts), indices, std::size(indices));
 
     MeshData data;
     data.vertexStride = sizeof(PrimitiveVertex);

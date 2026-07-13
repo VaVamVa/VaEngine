@@ -4,10 +4,11 @@
 #include "Scene/RenderScene.h"
 
 #include "RHI/RHILoader.h"
-#include "RHI/IRHIResource.h"
+#include "RHI/BaseRHIResource.h"
 #include "RHI/Shader/IShader.h"
 
 #include "Demo/HelloCompute.h"
+#include "Render/PresentTransitionPass.h"
 
 #include "Utilities/Locator.h"
 #include "Utilities/DebuggingHelper.h"
@@ -15,6 +16,7 @@
 #include <stdexcept>
 #include <vector>
 #include <string>
+#include <format>
 
 std::unique_ptr<IExecute> IExecute::Create(ApplicationManager* app)
 {
@@ -51,7 +53,7 @@ void Execute::OnInitialize(NativeDisplayInfo displayInfo)
 	{
 		renderDevice->Initialize();
 
-		// Step 2 — RHI Compute 인프라 자기 검증 (1회 실행, VA_DRAW_PANEL에 PASS/FAIL 표시)
+		// RHI Compute 인프라 자기 검증 (1회 실행, VA_DRAW_PANEL에 PASS/FAIL 표시)
 		HelloCompute::Run(renderDevice.get());
 
 		CommandQueueDesc queueDesc = {
@@ -112,6 +114,11 @@ void Execute::OnInitialize(NativeDisplayInfo displayInfo)
 			SHADER_DIR L"/ForwardTransparent_PS.cso",
 			"VSMain",
 			"PSMain"
+		}, {
+			SHADER_DIR L"/OITComposite_VS.cso",
+			SHADER_DIR L"/OITComposite_PS.cso",
+			"VSMain",
+			"PSMain"
 		});
 		sceneRenderer.InitializeAnimation(renderDevice.get(), {
 			SHADER_DIR L"/AnimationDemo_VS.cso",
@@ -125,6 +132,36 @@ void Execute::OnInitialize(NativeDisplayInfo displayInfo)
 			"VSMain",
 			"PSMain"
 		});
+		sceneRenderer.InitializeShadowMap(renderDevice.get(), {
+			SHADER_DIR L"/ShadowMap_VS.cso",
+			SHADER_DIR L"/ShadowMap_PS.cso",
+			"VSMain",
+			"PSMain"
+		});
+		sceneRenderer.InitializeShadowMapSkinned(renderDevice.get(), {
+			SHADER_DIR L"/ShadowMapSkinned_VS.cso",
+			SHADER_DIR L"/ShadowMapSkinned_PS.cso",
+			"VSMain",
+			"PSMain"
+		});
+		sceneRenderer.InitializeIBL(renderDevice.get(), {
+			.csPath  = SHADER_DIR L"/IrradianceConvolve_CS.cso",
+			.csEntry = "CSMain"
+		}, {
+			.csPath  = SHADER_DIR L"/PrefilterSpecular_CS.cso",
+			.csEntry = "CSMain"
+		}, {
+			.csPath  = SHADER_DIR L"/IntegrateBRDF_CS.cso",
+			.csEntry = "CSMain"
+		});
+		sceneRenderer.InitializeSSAO(renderDevice.get(),
+			{ SHADER_DIR L"/SSAO_VS.cso",     SHADER_DIR L"/SSAO_PS.cso",     "VSMain", "PSMain" },
+			{ SHADER_DIR L"/SSAOBlur_VS.cso", SHADER_DIR L"/SSAOBlur_PS.cso", "VSMain", "PSMain" });
+		sceneRenderer.InitializeBloom(renderDevice.get(),
+			{ SHADER_DIR L"/Bloom_BrightPass_VS.cso", SHADER_DIR L"/Bloom_BrightPass_PS.cso", "VSMain", "PSMain" },
+			{ SHADER_DIR L"/Bloom_BlurH_VS.cso",       SHADER_DIR L"/Bloom_BlurH_PS.cso",       "VSMain", "PSMain" },
+			{ SHADER_DIR L"/Bloom_BlurV_VS.cso",       SHADER_DIR L"/Bloom_BlurV_PS.cso",       "VSMain", "PSMain" },
+			{ SHADER_DIR L"/Bloom_Composite_VS.cso",   SHADER_DIR L"/Bloom_Composite_PS.cso",   "VSMain", "PSMain" });
 		sceneRenderer.InitializeDebugLines(renderDevice.get(), {
 			SHADER_DIR L"/DebugLine_VS.cso",
 			SHADER_DIR L"/DebugLine_PS.cso",
@@ -169,6 +206,9 @@ void Execute::OnDestroy()
 void Execute::OnLoop()
 {
 	DebuggingHelper::Clear();
+#if VA_DEBUG
+	VA_LOG("Frame", std::format("--- Frame {} start ---", ++frameNumber));
+#endif
 
 	OnPreUpdate();
 	OnUpdate();
@@ -234,10 +274,9 @@ void Execute::OnRender()
 	commandAllocator->Reset();
 	commandList->Begin(commandAllocator.get());
 
-	IRHIResource* backBuffer = swapChain->GetCurrentBackBuffer();
+	BaseRHIResource* backBuffer = swapChain->GetCurrentBackBuffer();
 
 	renderGraph.Reset();
-	renderGraph.ImportResource(backBuffer, EResourceState::Present);
 
 	RenderScene scene;
 	app->SubmitRenderState(&scene);
@@ -252,19 +291,15 @@ void Execute::OnRender()
 		.width          = 1280,
 		.height         = 720
 	};
-	sceneRenderer.AddPasses(renderGraph, output, scene);
+	sceneRenderer.AddPasses(renderGraph, output, scene, renderDevice.get());
+
+	// 백버퍼를 Present 상태로 전환하는 것도 그래프의 마지막 Pass로 등록 — Compile()이 다른
+	// 리소스와 동일한 경로로 배리어를 자동 계산한다(수동 배리어 코드 불필요).
+	renderGraph.AddPass<PresentTransitionPass>(backBuffer);
 
 	renderGraph.Compile(renderDevice.get());
 	renderGraph.Execute(commandList.get(), scene);
 
-	sceneRenderer.UpdateResourceStates(renderGraph);
-
-	ResourceBarrier presentBarrier{
-		.resource    = backBuffer,
-		.beforeState = renderGraph.GetCurrentState(backBuffer),
-		.afterState  = EResourceState::Present
-	};
-	commandList->SetResourceBarrier(1, &presentBarrier);
 	commandList->Close();
 
 	std::vector<ICommandList*> cmdLists = { commandList.get() };

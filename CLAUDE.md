@@ -39,7 +39,7 @@
 - **Material = 의도** (blend mode, texture 슬롯, 조명 파라미터). **Renderer = 구현** (PSO 선택, 배리어, 패스 순서). Material이 PSO를 직접 소유하지 않는다.
 - **RenderScene = CPU 데이터** ("무엇을 그릴 것인가"). **SceneRenderer = GPU 실행** ("어떻게 그릴 것인가"). 이 경계를 넘는 데이터 배치는 허용하지 않는다.
 - **RenderGraph = 메커니즘** (배리어, 패스 순서, 실행). **SceneRenderer = 정책** (어떤 패스가 있고, 어떤 리소스를 소유하는가). 두 역할을 혼재하지 않는다.
-- 새 추상화(인터페이스·기반 클래스)를 추가할 때 다형성이 실제로 쓰이는지 확인한다. 사용되지 않는 추상화는 추가하지 않는다.
+- 새 추상화(인터페이스·기반 클래스)를 추가할 때 다형성이 실제로 쓰이거나 정말로 필요한지 확인한다. 불필요한 추상화는 추가하지 않는다.
 
 ---
 
@@ -128,7 +128,7 @@ WorldObject                 (Engine/Public/Object/)  — Transform 소유
 - `IMaterial`: blend mode + Phong 파라미터 인터페이스. `EBlendMode`로 투명 여부 결정.
 - `WorldModel::EnsureMaterial()`: 파생 클래스가 `WorldModel::Initialize`를 우회할 때 호출해 기본 Material을 생성한다.
 - `RenderCommand.material`에서 sortKey 투명 판별. `ForwardRenderer`가 blend mode에 따라 PSO 선택.
-- `WorldAnimatedModel`은 아직 Material 미보유 (기술 부채 — Material 주체 렌더링 확장 시 추가 예정).
+- `WorldAnimatedModel`은 `IMaterial`을 소유하며(`.matl`의 `diffuse_tex=`/`normal_tex=` 파싱, `WorldModel`과 동일 패턴) Albedo·Normal Map을 GBufferSkinned에 바인딩한다.
 
 ### 스켈레탈 애니메이션 파이프라인
 

@@ -17,18 +17,16 @@ struct DirectionalLightData
     float _pad         = 0.0f;
 };
 
-// 48 bytes — PointLight (HLSL)
+// 32 bytes — PointLight (HLSL)
 struct PointLightData
 {
     float color[3]       = { 1.0f, 1.0f, 1.0f };
     float range          = 10.0f;
     float position[3]    = {};
     float intensity      = 1.0f;
-    float attenuation[3] = { 1.0f, 0.09f, 0.032f };
-    float _pad           = 0.0f;
 };
 
-// 64 bytes — SpotLight (HLSL)
+// 48 bytes — SpotLight (HLSL)
 struct SpotLightData
 {
     float color[3]       = { 1.0f, 1.0f, 1.0f };
@@ -37,8 +35,6 @@ struct SpotLightData
     float intensity      = 1.0f;
     float direction[3]   = { 0.0f, -1.0f, 0.0f };
     float spot           = 16.0f;
-    float attenuation[3] = { 1.0f, 0.09f, 0.032f };
-    float _pad           = 0.0f;
 };
 
 // ── 인터페이스 ─────────────────────────────────────────────────────────────
@@ -71,7 +67,6 @@ public:
     virtual void SetColor      (float r, float g, float b) = 0;
     virtual void SetIntensity  (float intensity)            = 0;
     virtual void SetRange      (float range)                = 0;
-    virtual void SetAttenuation(float a0, float a1, float a2) = 0;
 };
 
 class ISpotLight : public ILight
@@ -86,7 +81,6 @@ public:
     virtual void SetIntensity  (float intensity)            = 0;
     virtual void SetRange      (float range)                = 0;
     virtual void SetSpot       (float spot)                 = 0;
-    virtual void SetAttenuation(float a0, float a1, float a2) = 0;
 };
 
 // Application이 구체 타입(Light.h) 없이 조명을 생성할 수 있도록 제공

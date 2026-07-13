@@ -5,13 +5,14 @@
 
 #include "RHI/IRenderDevice.h"
 #include "RHI/ICommandList.h"
-#include "RHI/IRHIResource.h"
+#include "RHI/BaseRHIResource.h"
 #include "RHI/Pipeline/PipelineDesc.h"
 #include "RHI/Common_RHI.h"
 #include "Math/Container.h"
 
 #include "Mesh/IMesh.h"
 #include "RHI/Texture/ITexture.h"
+#include "RHI/Texture/ITextureUAV.h"
 #include "RHI/Buffer/IDepthBuffer.h"
 #include "Utilities/DebuggingHelper.h"
 
@@ -43,7 +44,8 @@ struct LightsBufferData
     float                eyePosW[3];                     //   12 bytes
     int32_t              numPointLights;                 //    4 bytes
     int32_t              numSpotLights;                  //    4 bytes
-    float                _lightPad[3];                   //   12 bytes
+    uint32_t              iblEnabled;                     //    4 bytes — CB_Lights.gIBLEnabled
+    float                _lightPad[2];                   //    8 bytes
     // total: 704 bytes → 768 (CBV 256-aligned)
 };
 
@@ -102,8 +104,8 @@ struct ForwardPass : IRenderPass
     void DeclareResources(std::vector<PassResourceDecl>& /*reads*/,
                           std::vector<PassResourceDecl>& writes) const override
     {
-        writes.push_back({ output.backBuffer,          EResourceState::RenderTarget });
-        writes.push_back({ depthBuffer->GetResource(), EResourceState::DepthWrite   });
+        writes.push_back({ output.backBuffer, EResourceState::RenderTarget });
+        writes.push_back({ depthBuffer,       EResourceState::DepthWrite   });
     }
 
     void Execute(ICommandList* cmdList, const RenderScene& scene) override
@@ -139,27 +141,49 @@ struct ForwardPass : IRenderPass
     IDepthBuffer*    depthBuffer = nullptr;  // graph 소유, 비소유 포인터
 };
 
-struct TransparentPass : IRenderPass
+// Weighted Blended OIT — 1-Pass로 accum/revealage MRT에 기록(정렬 불필요, 2026-07-12_Q&A.md 참조)
+struct OITAccumPass : IRenderPass
 {
-    TransparentPass(ForwardRenderer* renderer, const FrameOutput& output, IDepthBuffer* sharedDepth)
-        : renderer(renderer), output(output), depthBuffer(sharedDepth) {}
+    OITAccumPass(ForwardRenderer* renderer, const FrameOutput& output, IDepthBuffer* sharedDepth,
+                IColorBuffer* accum, IColorBuffer* revealage,
+                ITextureUAV* irradianceMap, ITextureUAV* prefilteredMap, ITextureUAV* brdfLUT,
+                bool iblEnabled)
+        : renderer(renderer), output(output), depthBuffer(sharedDepth), accum(accum), revealage(revealage),
+          irradianceMap(irradianceMap), prefilteredMap(prefilteredMap), brdfLUT(brdfLUT),
+          iblEnabled(iblEnabled) {}
 
     void OnCompile(RenderGraph& /*graph*/) override {}
 
     void DeclareResources(std::vector<PassResourceDecl>& reads,
                           std::vector<PassResourceDecl>& writes) const override
     {
-        writes.push_back({ output.backBuffer,          EResourceState::RenderTarget });
-        reads.push_back({ depthBuffer->GetResource(),  EResourceState::DepthRead    });
+        writes.push_back({ accum,         EResourceState::RenderTarget });
+        writes.push_back({ revealage,     EResourceState::RenderTarget });
+        reads.push_back({ depthBuffer,    EResourceState::DepthRead    });
+        reads.push_back({ irradianceMap,  EResourceState::PixelShaderResource });
+        reads.push_back({ prefilteredMap, EResourceState::PixelShaderResource });
+        reads.push_back({ brdfLUT,        EResourceState::PixelShaderResource });
     }
 
     void Execute(ICommandList* cmdList, const RenderScene& scene) override
     {
         RenderPassDesc passDesc;
-        passDesc.renderTargetCount            = 1;
-        passDesc.renderTargets[0].view        = output.backBufferView;
-        passDesc.renderTargets[0].loadAction  = ELoadAction::Load;
+        passDesc.renderTargetCount            = 2;
+        passDesc.renderTargets[0].view        = accum->GetRTV();
+        passDesc.renderTargets[0].loadAction  = ELoadAction::Clear;   // (0,0,0,0)
         passDesc.renderTargets[0].storeAction = EStoreAction::Store;
+
+        passDesc.renderTargets[1].view        = revealage->GetRTV();
+        passDesc.renderTargets[1].loadAction  = ELoadAction::Clear;
+        passDesc.renderTargets[1].storeAction = EStoreAction::Store;
+        // revealage는 1.0에서 시작해 곱셈으로 수렴 — R32_FLOAT라 실제로는 R 채널만 쓰이지만,
+        // D3D12 검증 레이어가 생성 시점 optimized clear value(1,1,1,1 4성분)와 클리어 호출 값을
+        // 통째로 비교해 불일치 여부를 판단하므로 4성분 전부 맞춰야 CLEARRENDERTARGETVIEW_MISMATCHINGCLEARVALUE
+        // 경고가 사라진다(R만 1로 두면 나머지 3개가 기본값 0이라 여전히 불일치로 잡힘).
+        passDesc.renderTargets[1].clearColor[0] = 1.0f;
+        passDesc.renderTargets[1].clearColor[1] = 1.0f;
+        passDesc.renderTargets[1].clearColor[2] = 1.0f;
+        passDesc.renderTargets[1].clearColor[3] = 1.0f;
 
         passDesc.depthStencil.view            = depthBuffer->GetReadOnlyView();
         passDesc.depthStencil.loadAction      = ELoadAction::Load;
@@ -174,7 +198,7 @@ struct TransparentPass : IRenderPass
                                 static_cast<int32_t>(output.width),
                                 static_cast<int32_t>(output.height));
 
-        renderer->RenderTransparent(cmdList, scene);
+        renderer->RenderTransparent(cmdList, scene, irradianceMap, prefilteredMap, brdfLUT, iblEnabled);
 
         cmdList->EndRenderPass();
     }
@@ -182,6 +206,58 @@ struct TransparentPass : IRenderPass
     ForwardRenderer* renderer;
     FrameOutput      output;
     IDepthBuffer*    depthBuffer = nullptr;
+    IColorBuffer*    accum;
+    IColorBuffer*    revealage;
+    ITextureUAV*     irradianceMap;
+    ITextureUAV*     prefilteredMap;
+    ITextureUAV*     brdfLUT;
+    bool             iblEnabled;
+};
+
+// OIT 합성 — accum/revealage를 풀어 hdrOut에 AlphaBlend (Phase 1-1: hdrOut에 그려 Tonemap이 포함하도록)
+struct OITCompositePass : IRenderPass
+{
+    OITCompositePass(ForwardRenderer* renderer, const FrameOutput& output,
+                     IColorBuffer* accum, IColorBuffer* revealage, ITextureUAV* hdrOut)
+        : renderer(renderer), output(output), accum(accum), revealage(revealage), hdrOut(hdrOut) {}
+
+    void OnCompile(RenderGraph& /*graph*/) override {}
+
+    void DeclareResources(std::vector<PassResourceDecl>& reads,
+                          std::vector<PassResourceDecl>& writes) const override
+    {
+        reads.push_back({ accum,     EResourceState::PixelShaderResource });
+        reads.push_back({ revealage, EResourceState::PixelShaderResource });
+        writes.push_back({ hdrOut,   EResourceState::RenderTarget        });
+    }
+
+    void Execute(ICommandList* cmdList, const RenderScene& /*scene*/) override
+    {
+        RenderPassDesc passDesc;
+        passDesc.renderTargetCount            = 1;
+        passDesc.renderTargets[0].view        = hdrOut->GetRTV();
+        passDesc.renderTargets[0].loadAction  = ELoadAction::Load;   // DeferredLightingPass 결과 위에 블렌딩
+        passDesc.renderTargets[0].storeAction = EStoreAction::Store;
+
+        cmdList->BeginRenderPass(passDesc);
+        cmdList->SetViewport(0.0f, 0.0f,
+                             static_cast<float>(output.width),
+                             static_cast<float>(output.height),
+                             0.0f, 1.0f);
+        cmdList->SetScissorRect(0, 0,
+                                static_cast<int32_t>(output.width),
+                                static_cast<int32_t>(output.height));
+
+        renderer->RenderOITComposite(cmdList);
+
+        cmdList->EndRenderPass();
+    }
+
+    ForwardRenderer* renderer;
+    FrameOutput      output;
+    IColorBuffer*    accum;
+    IColorBuffer*    revealage;
+    ITextureUAV*     hdrOut = nullptr;
 };
 
 struct DebugLinePass : IRenderPass
@@ -194,8 +270,8 @@ struct DebugLinePass : IRenderPass
     void DeclareResources(std::vector<PassResourceDecl>& reads,
                           std::vector<PassResourceDecl>& writes) const override
     {
-        writes.push_back({ output.backBuffer,          EResourceState::RenderTarget });
-        reads.push_back({ depthBuffer->GetResource(),  EResourceState::DepthRead    });
+        writes.push_back({ output.backBuffer, EResourceState::RenderTarget });
+        reads.push_back({ depthBuffer,        EResourceState::DepthRead    });
     }
 
     void Execute(ICommandList* cmdList, const RenderScene& scene) override
@@ -273,13 +349,18 @@ struct DebugTextPass : IRenderPass
 void ForwardRenderer::Initialize(IRenderDevice* device, const ShaderDesc& shaderDesc)
 {
     // b0: ViewProj(Vertex), b1: Material(Pixel), b2: Lights(Pixel), t0: albedo(Pixel)
+    // 새 슬롯은 항상 끝에 append — 기존 root index(0~3) 불변 보장
     BindingEntry bindings[] = {
         { EBindingType::ConstantBuffer, 0, EShaderStage::Vertex },
         { EBindingType::ConstantBuffer, 1, EShaderStage::Pixel  },
         { EBindingType::ConstantBuffer, 2, EShaderStage::Pixel  },
         { EBindingType::Texture,        0, EShaderStage::Pixel  },
+        { EBindingType::Texture,        1, EShaderStage::Pixel  },  // root 4 — Normal Map
+        { EBindingType::Texture,        2, EShaderStage::Pixel  },  // root 5 — IBL Diffuse Irradiance
+        { EBindingType::Texture,        3, EShaderStage::Pixel  },  // root 6 — IBL Specular Prefiltered
+        { EBindingType::Texture,        4, EShaderStage::Pixel  },  // root 7 — IBL BRDF LUT
     };
-    bindingLayout = device->CreateBindingLayout(bindings, 4);
+    bindingLayout = device->CreateBindingLayout(bindings, 8);
 
     shader = device->CreateShader(shaderDesc);
 
@@ -289,6 +370,7 @@ void ForwardRenderer::Initialize(IRenderDevice* device, const ShaderDesc& shader
         { "NORMAL",            0, EPixelFormat::R32G32B32_FLOAT,    12, 0, false },
         { "COLOR",             0, EPixelFormat::R32G32B32A32_FLOAT, 24, 0, false },
         { "TEXCOORD",          0, EPixelFormat::R32G32_FLOAT,       40, 0, false },
+        { "TANGENT",           0, EPixelFormat::R32G32B32A32_FLOAT, 48, 0, false },
         { "INSTANCETRANSFORM", 0, EPixelFormat::R32G32B32A32_FLOAT, 0,  1, true  },
         { "INSTANCETRANSFORM", 1, EPixelFormat::R32G32B32A32_FLOAT, 16, 1, true  },
         { "INSTANCETRANSFORM", 2, EPixelFormat::R32G32B32A32_FLOAT, 32, 1, true  },
@@ -297,7 +379,7 @@ void ForwardRenderer::Initialize(IRenderDevice* device, const ShaderDesc& shader
     PipelineStateDesc psoDesc = {
         .shader           = shader.get(),
         .vertexInputs     = inputs,
-        .vertexInputCount = 8,
+        .vertexInputCount = 9,
         .rtvFormats       = { EPixelFormat::R8G8B8A8_UNORM },
         .dsvFormat        = EPixelFormat::D24_UNORM_S8_UINT,
         .depthEnable      = true,
@@ -334,6 +416,11 @@ void ForwardRenderer::Initialize(IRenderDevice* device, const ShaderDesc& shader
     texture = device->CreateTexture();
     texture->LoadFromMemory(device, pixels.data(), W, H);
 
+    // normal map 폴백용 1×1 tangent-up 텍스처 — RGB(128,128,255) → decode 시 (0,0,1)에 근접
+    constexpr uint32_t flatNormal = 0xFFFF8080;  // A=FF,B=FF,G=80,R=80
+    defaultNormalTexture = device->CreateTexture();
+    defaultNormalTexture->LoadFromMemory(device, &flatNormal, 1, 1);
+
     material = std::make_unique<Material>();
     material->Initialize(device);
 }
@@ -347,9 +434,14 @@ void ForwardRenderer::AddOpaquePasses(RenderGraph& graph, const FrameOutput& out
     graph.AddPass<ForwardPass>(this, output, depthHandle);
 }
 
-void ForwardRenderer::AddTransparentPasses(RenderGraph& graph, const FrameOutput& output, IDepthBuffer* sharedDepth)
+void ForwardRenderer::AddTransparentPasses(RenderGraph& graph, const FrameOutput& output,
+                                            IDepthBuffer* sharedDepth, ITextureUAV* hdrOut,
+                                            ITextureUAV* irradianceMap, ITextureUAV* prefilteredMap,
+                                            ITextureUAV* brdfLUT, bool iblEnabled)
 {
-    graph.AddPass<TransparentPass>(this, output, sharedDepth);
+    graph.AddPass<OITAccumPass>(this, output, sharedDepth, oitAccum.get(), oitRevealage.get(),
+                                irradianceMap, prefilteredMap, brdfLUT, iblEnabled);
+    graph.AddPass<OITCompositePass>(this, output, oitAccum.get(), oitRevealage.get(), hdrOut);
 }
 
 void ForwardRenderer::AddDebugTextPasses(RenderGraph& graph, const FrameOutput& output)
@@ -420,7 +512,9 @@ void ForwardRenderer::RenderSky(ICommandList* cmdList, const RenderScene& scene)
     cmdList->DrawInstanced(3, 1);
 }
 
-void ForwardRenderer::InitializeTransparent(IRenderDevice* device, const ShaderDesc& shaderDesc)
+void ForwardRenderer::InitializeTransparent(IRenderDevice* device, const ShaderDesc& shaderDesc,
+                                            const ShaderDesc& compositeShaderDesc,
+                                            uint32_t width, uint32_t height)
 {
     transparentShader = device->CreateShader(shaderDesc);
 
@@ -429,38 +523,53 @@ void ForwardRenderer::InitializeTransparent(IRenderDevice* device, const ShaderD
         { "NORMAL",            0, EPixelFormat::R32G32B32_FLOAT,    12, 0, false },
         { "COLOR",             0, EPixelFormat::R32G32B32A32_FLOAT, 24, 0, false },
         { "TEXCOORD",          0, EPixelFormat::R32G32_FLOAT,       40, 0, false },
+        { "TANGENT",           0, EPixelFormat::R32G32B32A32_FLOAT, 48, 0, false },
         { "INSTANCETRANSFORM", 0, EPixelFormat::R32G32B32A32_FLOAT, 0,  1, true  },
         { "INSTANCETRANSFORM", 1, EPixelFormat::R32G32B32A32_FLOAT, 16, 1, true  },
         { "INSTANCETRANSFORM", 2, EPixelFormat::R32G32B32A32_FLOAT, 32, 1, true  },
         { "INSTANCETRANSFORM", 3, EPixelFormat::R32G32B32A32_FLOAT, 48, 1, true  },
     };
-    PipelineStateDesc baseDesc = {
+    // Weighted Blended OIT — 1-Pass, CullMode::None(정렬이 필요 없어짐), MRT(accum, revealage)
+    PipelineStateDesc transparentDesc = {
         .shader           = transparentShader.get(),
         .vertexInputs     = inputs,
-        .vertexInputCount = 8,
-        .rtvFormats       = { EPixelFormat::R8G8B8A8_UNORM },
+        .vertexInputCount = 9,
+        .rtvFormats       = { EPixelFormat::R16G16B16A16_FLOAT, EPixelFormat::R32_FLOAT },
+        .rtvCount         = 2,
         .dsvFormat        = EPixelFormat::D24_UNORM_S8_UINT,
-        .blendMode        = EBlendMode::AlphaBlend,
+        .cullMode         = ECullMode::None,
+        .blendMode        = EBlendMode::OITAccumulate,
         .depthEnable      = true,
         .depthWrite       = false,
         .bindingLayout    = bindingLayout.get()
     };
+    transparentPSO = device->CreatePipelineState(transparentDesc);
 
-    // Pass 1: CullMode::Front — 카메라 반대편 면(뒷면) 렌더링
-    PipelineStateDesc backFaceDesc = baseDesc;
-    backFaceDesc.cullMode = ECullMode::Front;
-    transparentBackFacePSO = device->CreatePipelineState(backFaceDesc);
+    oitAccum = device->CreateColorBuffer(EPixelFormat::R16G16B16A16_FLOAT, width, height);  // (0,0,0,0)로 클리어 — 기본값과 일치
 
-    // Pass 2: CullMode::Back — 카메라를 향한 면(앞면) 렌더링
-    PipelineStateDesc frontFaceDesc = baseDesc;
-    frontFaceDesc.cullMode = ECullMode::Back;
-    transparentFrontFacePSO = device->CreatePipelineState(frontFaceDesc);
-}
+    // revealage는 1.0에서 시작해야 하므로(곱셈 블렌드) optimized clear value를 실제 클리어 값과
+    // 맞춰준다 — 안 맞추면 CLEARRENDERTARGETVIEW_MISMATCHINGCLEARVALUE 경고(느린 clear 경로, 정확성엔 무관).
+    const float kRevealageClear[4] = { 1.0f, 1.0f, 1.0f, 1.0f };
+    oitRevealage = device->CreateColorBuffer(EPixelFormat::R32_FLOAT, width, height, kRevealageClear);
 
-void ForwardRenderer::ResolveOIT(ICommandList* /*cmdList*/, const RenderScene& /*scene*/)
-{
-    // [미구현] Weighted Blended OIT: AccumBuffer Pre-Pass + Composite Pass
-    // [미구현] A-Buffer: LinkedList UAV per pixel + depth sort + resolve
+    // OIT 합성 PSO — 풀스크린 삼각형, 기존 AlphaBlend 재사용(신규 블렌드 모드 불필요)
+    BindingEntry compositeBindings[] = {
+        { EBindingType::Texture, 0, EShaderStage::Pixel },  // t0 — accum
+        { EBindingType::Texture, 1, EShaderStage::Pixel },  // t1 — revealage
+    };
+    compositeBindingLayout = device->CreateBindingLayout(compositeBindings, 2);
+    compositeShader = device->CreateShader(compositeShaderDesc);
+
+    PipelineStateDesc compositeDesc{};
+    compositeDesc.shader           = compositeShader.get();
+    compositeDesc.vertexInputs     = nullptr;
+    compositeDesc.vertexInputCount = 0;
+    compositeDesc.rtvFormats[0]    = EPixelFormat::R16G16B16A16_FLOAT;
+    compositeDesc.rtvCount         = 1;
+    compositeDesc.depthEnable      = false;
+    compositeDesc.blendMode        = EBlendMode::AlphaBlend;
+    compositeDesc.bindingLayout    = compositeBindingLayout.get();
+    compositePSO = device->CreatePipelineState(compositeDesc);
 }
 
 void ForwardRenderer::Render(ICommandList* cmdList, const RenderScene& scene)
@@ -541,6 +650,9 @@ void ForwardRenderer::Render(ICommandList* cmdList, const RenderScene& scene)
             ITexture* albedo = mat ? mat->GetAlbedoTexture() : nullptr;
             (albedo ? albedo : texture.get())->Bind(cmdList, 3);  // root 3 → t0
 
+            ITexture* normalMap = mat ? mat->GetNormalTexture() : nullptr;
+            (normalMap ? normalMap : defaultNormalTexture.get())->Bind(cmdList, 4);  // root 4 → t1
+
             boundMat = mat;
         }
 
@@ -554,9 +666,11 @@ void ForwardRenderer::Render(ICommandList* cmdList, const RenderScene& scene)
     }
 }
 
-void ForwardRenderer::RenderTransparent(ICommandList* cmdList, const RenderScene& scene)
+void ForwardRenderer::RenderTransparent(ICommandList* cmdList, const RenderScene& scene,
+                                        ITextureUAV* irradianceMap, ITextureUAV* prefilteredMap,
+                                        ITextureUAV* brdfLUT, bool iblEnabled)
 {
-    if (!transparentBackFacePSO || !transparentFrontFacePSO) return;
+    if (!transparentPSO) return;
 
     const CameraData& cam = scene.GetCamera();
 
@@ -580,6 +694,7 @@ void ForwardRenderer::RenderTransparent(ICommandList* cmdList, const RenderScene
     ldata.eyePosW[0] = cam.eyePos[0];
     ldata.eyePosW[1] = cam.eyePos[1];
     ldata.eyePosW[2] = cam.eyePos[2];
+    ldata.iblEnabled = iblEnabled ? 1u : 0u;
     lightsBuffer->Upload(&ldata, sizeof(ldata));
 
     // 투명 커맨드 수집
@@ -608,46 +723,46 @@ void ForwardRenderer::RenderTransparent(ICommandList* cmdList, const RenderScene
     instanceBuffer->Upload(allInstances.data(), allInstances.size() * sizeof(Matrix4x4));
     cmdList->SetPrimitiveTopology(EPrimitiveTopology::TriangleList);
 
-    auto drawTransparentPass = [&](IPipelineState* pso)
+    // Weighted Blended OIT — 1-Pass(CullMode::None), 정렬 불필요. accum/revealage MRT에 기록.
+    transparentPSO->Bind(cmdList);
+    cmdList->SetConstantBuffer(viewProjBuffer.get(), 0);  // root 0 → b0
+    cmdList->SetConstantBuffer(lightsBuffer.get(), 2);    // root 2 → b2
+    irradianceMap->BindSRV(cmdList, 5, /*isCompute*/ false);   // root 5 → t2
+    prefilteredMap->BindSRV(cmdList, 6, /*isCompute*/ false);  // root 6 → t3
+    brdfLUT->BindSRV(cmdList, 7, /*isCompute*/ false);         // root 7 → t4
+
+    IMaterial* boundMat   = nullptr;
+    uint32_t   byteOffset = 0;
+
+    for (auto& [mesh, mat, count] : drawList)
     {
-        pso->Bind(cmdList);
-        cmdList->SetConstantBuffer(viewProjBuffer.get(), 0);  // root 0 → b0
-        cmdList->SetConstantBuffer(lightsBuffer.get(), 2);    // root 2 → b2
-
-        IMaterial* boundMat = nullptr;
-        uint32_t   byteOffset = 0;
-
-        for (auto& [mesh, mat, count] : drawList)
+        if (mat != boundMat)
         {
-            if (mat != boundMat)
-            {
-                IMaterial* effMat = mat ? mat : material.get();
-                if (effMat) effMat->UpdateBufferIfDirty();
-                cmdList->SetConstantBuffer(effMat->GetBuffer(), 1);  // root 1 → b1
-                ITexture* albedo = mat ? mat->GetAlbedoTexture() : nullptr;
-                (albedo ? albedo : texture.get())->Bind(cmdList, 3);  // root 3 → t0
-                boundMat = mat;
-            }
-            uint32_t n = std::min(count, MAX_INSTANCES);
-            cmdList->SetVertexBufferAt(instanceBuffer.get(), 1,
-                                       static_cast<uint32_t>(sizeof(Matrix4x4)),
-                                       n * static_cast<uint32_t>(sizeof(Matrix4x4)),
-                                       byteOffset);
-            mesh->DrawInstanced(cmdList, n);
-            byteOffset += n * static_cast<uint32_t>(sizeof(Matrix4x4));
+            IMaterial* effMat = mat ? mat : material.get();
+            if (effMat) effMat->UpdateBufferIfDirty();
+            cmdList->SetConstantBuffer(effMat->GetBuffer(), 1);  // root 1 → b1
+            ITexture* albedo = mat ? mat->GetAlbedoTexture() : nullptr;
+            (albedo ? albedo : texture.get())->Bind(cmdList, 3);  // root 3 → t0
+            ITexture* normalMap = mat ? mat->GetNormalTexture() : nullptr;
+            (normalMap ? normalMap : defaultNormalTexture.get())->Bind(cmdList, 4);  // root 4 → t1
+            boundMat = mat;
         }
-    };
+        uint32_t n = std::min(count, MAX_INSTANCES);
+        cmdList->SetVertexBufferAt(instanceBuffer.get(), 1,
+                                   static_cast<uint32_t>(sizeof(Matrix4x4)),
+                                   n * static_cast<uint32_t>(sizeof(Matrix4x4)),
+                                   byteOffset);
+        mesh->DrawInstanced(cmdList, n);
+        byteOffset += n * static_cast<uint32_t>(sizeof(Matrix4x4));
+    }
+}
 
-    // === Pass 1: 뒷면 (CullMode::Front — 카메라 반대편 면) ===
-    drawTransparentPass(transparentBackFacePSO.get());
-
-    // [OIT 확장 지점]
-    // 비볼록 메시 / 오브젝트 간 교차: 2-Pass 뒷면→앞면 순서만으로 정렬 오류 발생.
-    // 해결: Weighted Blended OIT (AccumBuffer Pre-Pass + Composite) 또는 A-Buffer.
-    // ResolveOIT(cmdList, scene);
-
-    // === Pass 2: 앞면 (CullMode::Back — 카메라를 향한 면) ===
-    drawTransparentPass(transparentFrontFacePSO.get());
+void ForwardRenderer::RenderOITComposite(ICommandList* cmdList)
+{
+    compositePSO->Bind(cmdList);
+    oitAccum->BindSRV(cmdList, 0, /*isCompute*/ false);      // root 0 → t0
+    oitRevealage->BindSRV(cmdList, 1, /*isCompute*/ false);  // root 1 → t1
+    cmdList->DrawInstanced(3, 1);
 }
 
 void ForwardRenderer::AddDebugLinePasses(RenderGraph& graph, const FrameOutput& output, IDepthBuffer* sharedDepth)

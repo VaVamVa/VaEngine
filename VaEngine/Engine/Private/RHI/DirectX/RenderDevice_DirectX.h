@@ -25,8 +25,10 @@ public:
 	std::unique_ptr<ITexture>        CreateTextureFloat() override;
 	std::unique_ptr<ITexture2DArray> CreateTexture2DArray() override;
 	std::unique_ptr<ITextureUAV>     CreateTextureUAV() override;
-	std::unique_ptr<IDepthBuffer>    CreateDepthBuffer(uint32_t width, uint32_t height, EPixelFormat format) override;
-	std::unique_ptr<IColorBuffer>    CreateColorBuffer(EPixelFormat format, uint32_t width, uint32_t height) override;
+	std::unique_ptr<IDepthBuffer>    CreateDepthBuffer(uint32_t width, uint32_t height, EPixelFormat format,
+	                                                    uint32_t arraySize = 1) override;
+	std::unique_ptr<IColorBuffer>    CreateColorBuffer(EPixelFormat format, uint32_t width, uint32_t height,
+	                                                    const float* optimizedClearColor = nullptr) override;
 	std::unique_ptr<IResourceView>   CreateBufferSRV(IBuffer* buffer, uint32_t numElements, uint32_t strideBytes) override;
 	std::unique_ptr<IResourceView>   CreateBufferUAV(IBuffer* buffer, uint32_t numElements, uint32_t strideBytes) override;
 
@@ -44,6 +46,9 @@ public:
 	// 복사 명령을 ICommandList 람다로 받아 즉시 실행하고 GPU 완료까지 대기
 	void ImmediateSubmit(std::function<void(ICommandList*)> recordFn) override;
 
+protected:
+	void Impl_RegisterDebugMessageCallback() override;
+
 private:
 	void EnableDebugLayer();
 	void CreateFactory();
@@ -51,10 +56,15 @@ private:
 	void CreateDevice();
 	void CreateUploadInfra();
 
+	// ID3D12InfoQueue1::RegisterMessageCallback 시그니처 — 심각도별로 분류해 VA_LOG로 전달
+	static void CALLBACK OnDebugMessage(D3D12_MESSAGE_CATEGORY category, D3D12_MESSAGE_SEVERITY severity,
+	                                     D3D12_MESSAGE_ID id, LPCSTR description, void* context);
+
 private:
 	ComPtr<IDXGIFactory6>        factory;
 	ComPtr<IDXGIAdapter4>        adapter;
 	ComPtr<ID3D12Device>         device;
+	DWORD                        debugCallbackCookie = 0;  // Impl_RegisterDebugMessageCallback 등록 해제용
 
 	ComPtr<ID3D12DescriptorHeap> globalSrvHeap;
 	uint32_t                     srvDescriptorSize = 0;

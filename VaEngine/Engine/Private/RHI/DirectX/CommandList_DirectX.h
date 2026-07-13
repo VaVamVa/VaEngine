@@ -38,15 +38,15 @@ public:
 	void BeginRenderPass(const RenderPassDesc& desc) override;
 	void EndRenderPass() override;
 	void CopyBuffer(IBuffer* dst, IBuffer* src, uint64_t bytes) override;
-	void CopyBufferToTexture(IRHIResource* dstTexture, uint32_t dstSubresource,
-	                         IRHIResource* srcBuffer, uint64_t srcOffset,
+	void CopyBufferToTexture(BaseRHIResource* dstTexture, uint32_t dstSubresource,
+	                         BaseRHIResource* srcBuffer, uint64_t srcOffset,
 	                         uint32_t width, uint32_t height, uint32_t rowPitch) override;
 
 	void SetComputeConstantBuffer(IBuffer* cb, uint32_t slot) override;
 	void SetComputeSRV(IResourceView* view, uint32_t slot) override;
 	void SetComputeUAV(IResourceView* view, uint32_t slot) override;
 	void Dispatch(uint32_t groupCountX, uint32_t groupCountY, uint32_t groupCountZ) override;
-	void UAVBarrier(IRHIResource* resource) override;
+	void UAVBarrier(BaseRHIResource* resource) override;
 #pragma endregion Commands
 
 

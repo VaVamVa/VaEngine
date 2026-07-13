@@ -5,7 +5,7 @@
 
 #include "RHI/IRenderDevice.h"
 #include "RHI/ICommandList.h"
-#include "RHI/IRHIResource.h"
+#include "RHI/BaseRHIResource.h"
 #include "RHI/Buffer/IDepthBuffer.h"
 #include "RHI/Pipeline/PipelineDesc.h"
 #include "RHI/Pipeline/ComputePipelineDesc.h"
@@ -80,8 +80,8 @@ struct AnimationPass : IRenderPass
     void DeclareResources(std::vector<PassResourceDecl>& reads,
                           std::vector<PassResourceDecl>& writes) const override
     {
-        writes.push_back({ output.backBuffer,          EResourceState::RenderTarget });
-        writes.push_back({ depthBuffer->GetResource(), EResourceState::DepthWrite   });
+        writes.push_back({ output.backBuffer, EResourceState::RenderTarget });
+        writes.push_back({ depthBuffer,       EResourceState::DepthWrite   });
         // 각 mesh의 BonePalette: compute UAV write → graphics VS SRV read
         // graph가 자동으로 UnorderedAccess → NonPixelShaderResource barrier 삽입
         for (auto* m : meshes)
@@ -226,9 +226,10 @@ std::vector<SkinnedMesh*> AnimationRenderer::AddComputePasses(RenderGraph& graph
                 uniqueMeshes.push_back(cmd.skinnedMesh);
         }
     }
-    for (auto* m : uniqueMeshes)
-        graph.ImportResource(m->GetBonePaletteBuffer(), EResourceState::UnorderedAccess);
-
+    // 별도 등록 불필요 — BonePalette(BaseRHIResource)가 자기 상태를 스스로 들고 있어(Buffer_DirectX::Create()가
+    // Common으로 초기화) Compile()이 매 프레임 그 상태를 직접 읽고 갱신한다. 과거엔 ImportResource로 매 프레임
+    // UnorderedAccess를 강제해, GBufferRenderer가 같은 프레임에 NonPixelShaderResource로 읽고 끝나도
+    // 다음 프레임에 그 사실을 잃어버리는 버그가 있었다.
     graph.AddPass<BonePaletteComputePass>(this, uniqueMeshes);
     return uniqueMeshes;
 }

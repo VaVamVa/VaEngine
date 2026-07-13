@@ -1,7 +1,7 @@
 #include "CommandList_DirectX.h"
 #include "CommandAlloc_DirectX.h"
 #include "RenderDevice_DirectX.h"
-#include "RHI/IRHIResource.h"
+#include "RHI/BaseRHIResource.h"
 
 #include "SwapChain_DirectX.h"
 
@@ -263,8 +263,8 @@ void CommandList_DirectX::CopyBuffer(IBuffer* dst, IBuffer* src, uint64_t bytes)
 }
 
 void CommandList_DirectX::CopyBufferToTexture(
-	IRHIResource* dstTexture, uint32_t dstSubresource,
-	IRHIResource* srcBuffer,  uint64_t srcOffset,
+	BaseRHIResource* dstTexture, uint32_t dstSubresource,
+	BaseRHIResource* srcBuffer,  uint64_t srcOffset,
 	uint32_t width, uint32_t height, uint32_t rowPitch)
 {
 	auto* dxDst = static_cast<ID3D12Resource*>(dstTexture->GetNativeResource());
@@ -316,7 +316,7 @@ void CommandList_DirectX::Dispatch(uint32_t groupCountX, uint32_t groupCountY, u
 	commandList->Dispatch(groupCountX, groupCountY, groupCountZ);
 }
 
-void CommandList_DirectX::UAVBarrier(IRHIResource* resource)
+void CommandList_DirectX::UAVBarrier(BaseRHIResource* resource)
 {
 	D3D12_RESOURCE_BARRIER barrier = {};
 	barrier.Type          = D3D12_RESOURCE_BARRIER_TYPE_UAV;

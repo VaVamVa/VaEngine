@@ -6,14 +6,56 @@
 #include <assimp/Importer.hpp>
 #include <assimp/scene.h>
 #include <assimp/postprocess.h>
+#include <assimp/metadata.h>
 
 #include <cassert>
 #include <cstring>
 #include <filesystem>
+#include <fstream>
 #include <functional>
 #include <iostream>
 #include <map>
 #include <set>
+
+// ── Scene Scale 보정 (World Space → Scene Scale, 1 unit = 1m 확정) ─────────────
+// FBX의 UnitScaleFactor 메타데이터는 "파일 1 unit = 몇 cm"를 의미한다(Assimp FBXImporter.cpp의
+// `size_relative_to_cm` 변수명으로 확인됨). Maya/Max 기본 export는 보통 1.0(=1unit=1cm).
+// 엔진 전체가 이미 1unit=1m로 동작 중이므로(CubeShape 기본 half-extent 0.5 → 1m 정육면체,
+// ShadowMap kExtent=40, Point Light range=15 등, 2026-07-12_Log.md Compact Log #1 참조),
+// cm→m 변환 계수를 계산해 정점/본/애니메이션 translation에 일괄 적용한다.
+//
+// 메타데이터가 실제 모델링 관례와 어긋나는 에셋(출처가 다른 마켓플레이스 에셋 등, 실사례:
+// Tower.fbx — 메타데이터는 cm를 가리키지만 실제 좌표는 이미 meter 기준으로 모델링됨,
+// 2026-07-12_Log.md Compact Log #5 참조)을 위해 FBX 옆에 사이드카 오버라이드 파일
+// ({stem}.import.txt, `unit_scale_override=<m per file-unit>`)을 두면 메타데이터 자동 감지를
+// 건너뛰고 그 값을 그대로 최종 배율로 사용한다. UE/Unity 등 상용 엔진도 자동 감지를 기본값으로
+// 쓰되 에셋별 오버라이드를 항상 열어둔다(자동 감지를 맹신하지 않음).
+static float GetFileUnitScaleToMeters(const aiScene* scene, const std::string& fbxPath)
+{
+    const std::filesystem::path overridePath =
+        std::filesystem::path(fbxPath).replace_extension(".import.txt");
+    if (std::filesystem::exists(overridePath))
+    {
+        std::ifstream f(overridePath);
+        std::string line;
+        const std::string prefix = "unit_scale_override=";
+        while (std::getline(f, line))
+        {
+            if (line.rfind(prefix, 0) == 0)
+            {
+                const float overrideScale = std::stof(line.substr(prefix.size()));
+                std::cout << "[ImportTool] Unit scale override: " << overrideScale
+                          << " (m per file-unit, from " << overridePath.filename().string() << ")\n";
+                return overrideScale;
+            }
+        }
+    }
+
+    float unitScaleFactor = 1.0f;  // cm per file-unit — 메타데이터 없으면 FBX 기본값(1unit=1cm) 가정
+    if (scene->mMetaData)
+        scene->mMetaData->Get("UnitScaleFactor", unitScaleFactor);
+    return unitScaleFactor / 100.0f;  // cm → m
+}
 
 // ── 텍스처 슬롯 처리 ────────────────────────────────────────────────────────
 
@@ -113,12 +155,39 @@ static void ExtractMaterials(
     }
 }
 
+// ── Tangent 추출 (aiProcess_CalcTangentSpace 결과 → tangent[4] = xyz + handedness) ──
+
+static void ExtractTangent(const aiMesh* mesh, uint32_t v, float outTangent[4])
+{
+    if (!mesh->HasTangentsAndBitangents())
+    {
+        outTangent[0] = 1.0f; outTangent[1] = 0.0f; outTangent[2] = 0.0f; outTangent[3] = 1.0f;
+        return;
+    }
+
+    const aiVector3D& t = mesh->mTangents[v];
+    const aiVector3D& b = mesh->mBitangents[v];
+    const aiVector3D  n = mesh->HasNormals() ? mesh->mNormals[v] : aiVector3D(0.0f, 0.0f, 1.0f);
+
+    outTangent[0] = t.x;
+    outTangent[1] = t.y;
+    outTangent[2] = t.z;
+
+    // handedness: cross(N,T)·B < 0 이면 -1 (UV 미러링된 경우)
+    const float cx = n.y * t.z - n.z * t.y;
+    const float cy = n.z * t.x - n.x * t.z;
+    const float cz = n.x * t.y - n.y * t.x;
+    const float dotCB = cx * b.x + cy * b.y + cz * b.z;
+    outTangent[3] = (dotCB < 0.0f) ? -1.0f : 1.0f;
+}
+
 // ── 메시 순회 ────────────────────────────────────────────────────────────────
 
 static void TraverseNode(
     const aiScene*                    scene,
     const aiNode*                     node,
-    std::vector<SubMeshIntermediate>& out)
+    std::vector<SubMeshIntermediate>& out,
+    float                             unitScale)
 {
     for (uint32_t m = 0; m < node->mNumMeshes; ++m)
     {
@@ -149,9 +218,9 @@ static void TraverseNode(
         {
             PrimitiveVertex pv{};
 
-            pv.pos[0] = mesh->mVertices[v].x;
-            pv.pos[1] = mesh->mVertices[v].y;
-            pv.pos[2] = mesh->mVertices[v].z;
+            pv.pos[0] = mesh->mVertices[v].x * unitScale;
+            pv.pos[1] = mesh->mVertices[v].y * unitScale;
+            pv.pos[2] = mesh->mVertices[v].z * unitScale;
 
             if (mesh->HasNormals())
             {
@@ -178,6 +247,8 @@ static void TraverseNode(
                 pv.uv[1] = mesh->mTextureCoords[0][v].y;
             }
 
+            ExtractTangent(mesh, v, pv.tangent);
+
             std::memcpy(sub.vertices.data() + v * stride, &pv, stride);
         }
 
@@ -194,7 +265,7 @@ static void TraverseNode(
     }
 
     for (uint32_t c = 0; c < node->mNumChildren; ++c)
-        TraverseNode(scene, node->mChildren[c], out);
+        TraverseNode(scene, node->mChildren[c], out, unitScale);
 }
 
 // ── Inspect (경량 로드: 본/애니메이션 유무만 확인) ───────────────────────────
@@ -234,6 +305,7 @@ ConvertResult Converter::Convert(const std::string& path)
         aiProcess_Triangulate          |
         aiProcess_GenNormals           |
         aiProcess_GenUVCoords          |
+        aiProcess_CalcTangentSpace     |
         aiProcess_ConvertToLeftHanded  |
         aiProcess_JoinIdenticalVertices);
 
@@ -244,8 +316,11 @@ ConvertResult Converter::Convert(const std::string& path)
         return {};
     }
 
+    const float unitScale = GetFileUnitScaleToMeters(scene, path);
+    std::cout << "[ImportTool] Unit scale: " << unitScale << " (m per file-unit)\n";
+
     ConvertResult result;
-    TraverseNode(scene, scene->mRootNode, result.meshes);
+    TraverseNode(scene, scene->mRootNode, result.meshes, unitScale);
     ExtractMaterials(scene, result.materials);
 
     std::cout << "[ImportTool] Loaded \"" << path
@@ -312,6 +387,7 @@ SkinnedConvertResult Converter::ConvertSkinned(const std::string& path)
         aiProcess_Triangulate           |
         aiProcess_GenNormals            |
         aiProcess_GenUVCoords           |
+        aiProcess_CalcTangentSpace      |
         aiProcess_ConvertToLeftHanded   |
         aiProcess_JoinIdenticalVertices |
         aiProcess_LimitBoneWeights);
@@ -322,6 +398,9 @@ SkinnedConvertResult Converter::ConvertSkinned(const std::string& path)
                   << "\n  " << importer.GetErrorString() << "\n";
         return {};
     }
+
+    const float unitScale = GetFileUnitScaleToMeters(scene, path);
+    std::cout << "[ImportTool] Unit scale: " << unitScale << " (m per file-unit)\n";
 
     SkinnedConvertResult result;
 
@@ -375,7 +454,13 @@ SkinnedConvertResult Converter::ConvertSkinned(const std::string& path)
 
                 auto it = boneOffsetMap.find(name);
                 if (it != boneOffsetMap.end())
+                {
                     AiMatToFloat16(it->second, bone.offsetMatrix);
+                    // translation 성분(inverse-bind pose의 이동량)도 cm→m 보정 필요
+                    bone.offsetMatrix[12] *= unitScale;
+                    bone.offsetMatrix[13] *= unitScale;
+                    bone.offsetMatrix[14] *= unitScale;
+                }
                 else
                 {
                     bone.offsetMatrix[0]  = 1.0f;
@@ -453,9 +538,9 @@ SkinnedConvertResult Converter::ConvertSkinned(const std::string& path)
         {
             SkinnedVertex sv{};
 
-            sv.pos[0] = mesh->mVertices[v].x;
-            sv.pos[1] = mesh->mVertices[v].y;
-            sv.pos[2] = mesh->mVertices[v].z;
+            sv.pos[0] = mesh->mVertices[v].x * unitScale;
+            sv.pos[1] = mesh->mVertices[v].y * unitScale;
+            sv.pos[2] = mesh->mVertices[v].z * unitScale;
 
             if (mesh->HasNormals())
             {
@@ -487,6 +572,8 @@ SkinnedConvertResult Converter::ConvertSkinned(const std::string& path)
                 sv.boneIndex[b]  = vbd[v].idx[b];
                 sv.boneWeight[b] = vbd[v].weight[b];
             }
+
+            ExtractTangent(mesh, v, sv.tangent);
 
             std::memcpy(sub.vertices.data() + v * kStride, &sv, kStride);
         }
@@ -556,9 +643,9 @@ SkinnedConvertResult Converter::ConvertSkinned(const std::string& path)
                     kf.scale[0] = s.x;  kf.scale[1] = s.y;  kf.scale[2] = s.z;
                     kf.rotation[0] = r.x; kf.rotation[1] = r.y;
                     kf.rotation[2] = r.z; kf.rotation[3] = r.w;
-                    kf.translation[0] = p.x;
-                    kf.translation[1] = p.y;
-                    kf.translation[2] = p.z;
+                    kf.translation[0] = p.x * unitScale;
+                    kf.translation[1] = p.y * unitScale;
+                    kf.translation[2] = p.z * unitScale;
                 }
                 else
                 {

@@ -89,19 +89,22 @@ struct CameraData
 	Matrix4x4 view;
 	Matrix4x4 proj;
 	float     eyePos[3] = {};
+	float     nearZ     = 0.1f;
 	float     farZ      = 1000.0f;
 };
 
 class RenderScene
 {
 public:
-	void SetCamera(const Matrix4x4& view, const Matrix4x4& proj, const Vector3& eye = {}, float farZ = 1000.0f)
+	void SetCamera(const Matrix4x4& view, const Matrix4x4& proj, const Vector3& eye = {},
+	                float nearZ = 0.1f, float farZ = 1000.0f)
 	{
 		camera.view       = view;
 		camera.proj       = proj;
 		camera.eyePos[0]  = eye.x;
 		camera.eyePos[1]  = eye.y;
 		camera.eyePos[2]  = eye.z;
+		camera.nearZ      = nearZ;
 		camera.farZ       = farZ;
 	}
 
@@ -164,6 +167,16 @@ public:
 
 	void SetSkybox(ITexture* tex) { skyTexture = tex; }
 
+	// 런타임 디버그 토글 — Application이 키 입력 등으로 매 프레임 설정. 기본 true(항상 켜짐).
+	void SetSSAOEnabled(bool enabled) { ssaoEnabled = enabled; }
+	void SetIBLEnabled(bool enabled)  { iblEnabled  = enabled; }
+	// CSM 캐스케이드 색상 오버레이 — 기본 false(꺼짐). 켜면 픽셀이 속한 캐스케이드를 색으로 덧칠해
+	// split 경계·blend 구간이 씬의 어디에 걸리는지 육안으로 확인할 수 있다.
+	void SetShowCascades(bool enabled) { showCascades = enabled; }
+	// CSM 활성 캐스케이드 개수(1~8) — SceneRenderer::AddPasses가 매 프레임 ShadowMapRenderer로 전달.
+	// 실제 clamp는 ShadowMapRenderer::SetActiveCascadeCount()가 수행(리소스는 항상 8개 고정 할당).
+	void SetActiveCascadeCount(uint32_t count) { activeCascadeCount = count; }
+
 	void Clear()
 	{
 		commands.clear();
@@ -174,6 +187,10 @@ public:
 	const std::vector<RenderCommand>&        GetCommands()        const { return commands; }
 	const LightingState&                     GetLighting()        const { return lightingState; }
 	ITexture*                                GetSkybox()          const { return skyTexture; }
+	bool                                      GetSSAOEnabled()    const { return ssaoEnabled; }
+	bool                                      GetIBLEnabled()     const { return iblEnabled; }
+	bool                                      GetShowCascades()   const { return showCascades; }
+	uint32_t                                  GetActiveCascadeCount() const { return activeCascadeCount; }
 
 private:
 	RenderSortKey CalculateSortKey(const Matrix4x4& worldMatrix, IMaterial* material,
@@ -188,7 +205,7 @@ private:
 		desc.materialID  = material ? material->GetID() : uint16_t(0);
 
 		// 2. Depth calculation (distance from eye)
-		Vector3 objPos = { worldMatrix.m[3][0], worldMatrix.m[3][1], worldMatrix.m[3][2] };
+		Vector3 objPos = GetWorldTranslation(worldMatrix);
 		Vector3 camPos = { camera.eyePos[0], camera.eyePos[1], camera.eyePos[2] };
 		
 		float dist = Vector3::Distance(objPos, camPos);
@@ -201,4 +218,8 @@ private:
 	LightingState                     lightingState;
 	std::vector<RenderCommand>        commands;
 	ITexture*                         skyTexture = nullptr;
+	bool                               ssaoEnabled = true;
+	bool                               iblEnabled  = true;
+	bool                               showCascades = false;
+	uint32_t                           activeCascadeCount = 4;
 };

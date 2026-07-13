@@ -8,7 +8,8 @@
 void ColorBuffer_DirectX::Create(IRenderDevice* device,
                                   EPixelFormat   format,
                                   uint32_t       width,
-                                  uint32_t       height)
+                                  uint32_t       height,
+                                  const float*   optimizedClearColor)
 {
 	auto* rdDevice  = static_cast<RenderDevice_DirectX*>(device);
 	auto* d3dDevice = rdDevice->GetDevice();
@@ -25,6 +26,13 @@ void ColorBuffer_DirectX::Create(IRenderDevice* device,
 
 	D3D12_CLEAR_VALUE clearVal = {};
 	clearVal.Format            = dxgiFormat;
+	if (optimizedClearColor)
+	{
+		clearVal.Color[0] = optimizedClearColor[0];
+		clearVal.Color[1] = optimizedClearColor[1];
+		clearVal.Color[2] = optimizedClearColor[2];
+		clearVal.Color[3] = optimizedClearColor[3];
+	}
 
 	if (FAILED(d3dDevice->CreateCommittedResource(
 		&heapProps,
@@ -36,6 +44,7 @@ void ColorBuffer_DirectX::Create(IRenderDevice* device,
 	{
 		throw std::runtime_error("Failed to create ColorBuffer resource");
 	}
+	SetTrackedState(EResourceState::RenderTarget);  // CreateCommittedResource가 실제로 이 상태로 생성
 
 	// 2. RTV — 1-slot private heap (DepthBuffer_DirectX 패턴)
 	D3D12_DESCRIPTOR_HEAP_DESC heapDesc = {};

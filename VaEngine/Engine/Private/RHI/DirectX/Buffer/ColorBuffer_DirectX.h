@@ -11,7 +11,8 @@ public:
 	void Create(IRenderDevice* device,
 	            EPixelFormat   format,
 	            uint32_t       width,
-	            uint32_t       height) override;
+	            uint32_t       height,
+	            const float*   optimizedClearColor = nullptr) override;
 
 	IResourceView* GetRTV() const override { return rtvView.get(); }
 	void BindSRV(ICommandList* cmdList, uint32_t slot, bool isCompute) override;

@@ -51,6 +51,8 @@ MeshData UVSphereShape::Build() const
         }
     }
 
+    ComputeTangents(verts.data(), verts.size(), indices.data(), indices.size());
+
     MeshData data;
     data.vertexStride = sizeof(PrimitiveVertex);
     data.vertices.resize(verts.size() * sizeof(PrimitiveVertex));

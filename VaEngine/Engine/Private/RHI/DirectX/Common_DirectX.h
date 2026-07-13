@@ -4,10 +4,12 @@
 #include <stdexcept>
 #include <cstdint>
 
-#include "RHI/IRHIResource.h"
+#include "RHI/BaseRHIResource.h"
 
-// ImmediateSubmit 내부에서 로컬 ID3D12Resource*를 IRHIResource*로 임시 래핑할 때 사용.
-struct RawResource final : IRHIResource
+// ImmediateSubmit 내부에서 로컬 ID3D12Resource*를 BaseRHIResource*로 임시 래핑할 때 사용.
+// RenderGraph::Compile()의 barrier 계산(DeclareResources)을 절대 거치지 않으므로
+// trackedState는 기본값(Uninitialized) 그대로 두어도 무해하다.
+struct RawResource final : BaseRHIResource
 {
     explicit RawResource(void* p) : ptr(p) {}
     void* GetNativeResource() const override { return ptr; }

@@ -38,8 +38,6 @@ public:
         { data.intensity = i; }
     void SetRange(float range) override
         { data.range = range; }
-    void SetAttenuation(float a0, float a1, float a2) override
-        { data.attenuation[0]=a0; data.attenuation[1]=a1; data.attenuation[2]=a2; }
 
 private:
     PointLightData data;
@@ -66,8 +64,6 @@ public:
         { data.range = range; }
     void SetSpot(float spot) override
         { data.spot = spot; }
-    void SetAttenuation(float a0, float a1, float a2) override
-        { data.attenuation[0]=a0; data.attenuation[1]=a1; data.attenuation[2]=a2; }
 
 private:
     SpotLightData data;

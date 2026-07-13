@@ -2,7 +2,7 @@
 
 #include <cstdint>
 
-class IRHIResource;
+class BaseRHIResource;
 class IRenderDevice;
 class IResourceView;
 struct SwapChainDesc;
@@ -16,7 +16,7 @@ public:
 	virtual void Present(bool bVsync) = 0;
 	virtual void Resize(uint32_t width, uint32_t height) = 0;
 
-	virtual IRHIResource* GetCurrentBackBuffer() const = 0;
+	virtual BaseRHIResource* GetCurrentBackBuffer() const = 0;
 	virtual IResourceView* GetCurrentBackBufferView() const = 0;
 
 protected:

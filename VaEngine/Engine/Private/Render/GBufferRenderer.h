@@ -69,6 +69,7 @@ private:
     std::unique_ptr<IBuffer>   instanceBuffer;        // slot 1: per-instance world (static)
     std::unique_ptr<IBuffer>   skinnedInstanceBuffer; // slot 1: per-instance world (skinned)
     std::unique_ptr<ITexture>  defaultTexture;        // albedo 폴백 (1×1 white)
+    std::unique_ptr<ITexture>  defaultNormalTexture;  // normal map 폴백 (1×1 tangent-up)
 
     uint32_t width  = 0;
     uint32_t height = 0;

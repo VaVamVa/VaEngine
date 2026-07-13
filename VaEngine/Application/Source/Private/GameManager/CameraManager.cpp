@@ -34,6 +34,7 @@ void CameraManager::OnInitialize(IRenderDevice* device)
 	Locator<InputSystem>::Get().PushContext(ctx);
 
 	camera = std::make_unique<FreeCamera>(Math::ToRadian(45.0f), 1280.0f / 720.0f, 0.1f, 100.0f);
+	camera->SetPosition({ 0.0f, 1.5f, -10.0f });
 }
 
 void CameraManager::OnUpdate(float deltaTime)
@@ -43,7 +44,8 @@ void CameraManager::OnUpdate(float deltaTime)
 
 void CameraManager::SubmitRenderState(RenderScene* scene)
 {
-	scene->SetCamera(camera->GetView(), camera->GetProjection(), camera->GetPosition());
+	scene->SetCamera(camera->GetView(), camera->GetProjection(), camera->GetPosition(),
+	                  camera->GetNearZ(), camera->GetFarZ());
 }
 
 void CameraManager::OnDestroy()
