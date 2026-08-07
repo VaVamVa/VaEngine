@@ -15,7 +15,7 @@ public:
     void UpdateBufferIfDirty()             override;
 
     EBlendMode  GetBlendMode()      const override { return blendMode; }
-    ECullMode   GetCullMode()       const override { return cullMode; }
+    EBackfaceCullMode GetCullMode() const override { return cullMode; }
     bool        IsDepthWrite()      const override { return depthWrite; }
     float       GetAlphaThreshold() const override { return data.alphaThreshold; }
     uint16_t    GetID()             const override { return id; }
@@ -35,7 +35,7 @@ public:
     void SetAO       (float v)                                  override;
 
     void SetBlendMode     (EBlendMode m) override { blendMode  = m; }
-    void SetCullMode      (ECullMode  m) override { cullMode   = m; }
+    void SetCullMode      (EBackfaceCullMode m) override { cullMode = m; }
     void SetDepthWrite    (bool v)       override { depthWrite = v; }
     void SetAlphaThreshold(float v)      override { data.alphaThreshold = v; dirty = true; }
 
@@ -43,7 +43,7 @@ private:
     MaterialData data;
     bool         dirty      = true;
     EBlendMode   blendMode  = EBlendMode::Opaque;
-    ECullMode    cullMode   = ECullMode::Back;
+    EBackfaceCullMode cullMode = EBackfaceCullMode::Back;
     bool         depthWrite = true;
     uint16_t     id         = 0;
 

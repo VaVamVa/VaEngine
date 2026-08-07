@@ -468,7 +468,7 @@ void ForwardRenderer::InitializeSky(IRenderDevice* device, const ShaderDesc& sky
         .vertexInputCount = 0,
         .rtvFormats       = { EPixelFormat::R16G16B16A16_FLOAT },
         .dsvFormat        = EPixelFormat::Unknown,
-        .cullMode         = ECullMode::None,
+        .cullMode         = EBackfaceCullMode::None,
         .blendMode        = EBlendMode::Opaque,
         .depthEnable      = false,
         .bindingLayout    = skyBindingLayout.get()
@@ -537,7 +537,7 @@ void ForwardRenderer::InitializeTransparent(IRenderDevice* device, const ShaderD
         .rtvFormats       = { EPixelFormat::R16G16B16A16_FLOAT, EPixelFormat::R32_FLOAT },
         .rtvCount         = 2,
         .dsvFormat        = EPixelFormat::D24_UNORM_S8_UINT,
-        .cullMode         = ECullMode::None,
+        .cullMode         = EBackfaceCullMode::None,
         .blendMode        = EBlendMode::OITAccumulate,
         .depthEnable      = true,
         .depthWrite       = false,

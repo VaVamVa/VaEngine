@@ -29,9 +29,9 @@ void PipelineState_DirectX::Create(ID3D12Device* device, const PipelineStateDesc
 	auto rasterDesc = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
 	switch (desc.cullMode)
 	{
-	case ECullMode::None:  rasterDesc.CullMode = D3D12_CULL_MODE_NONE;  break;
-	case ECullMode::Front: rasterDesc.CullMode = D3D12_CULL_MODE_FRONT; break;
-	case ECullMode::Back:  rasterDesc.CullMode = D3D12_CULL_MODE_BACK;  break;
+	case EBackfaceCullMode::None:  rasterDesc.CullMode = D3D12_CULL_MODE_NONE;  break;
+	case EBackfaceCullMode::Front: rasterDesc.CullMode = D3D12_CULL_MODE_FRONT; break;
+	case EBackfaceCullMode::Back:  rasterDesc.CullMode = D3D12_CULL_MODE_BACK;  break;
 	}
 
 	rootSignature = static_cast<BindingLayout_DirectX*>(desc.bindingLayout)->GetRootSignature();

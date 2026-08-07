@@ -1,8 +1,10 @@
 # VaEngine — 프로젝트 현황판
 
-> 마지막 업데이트: 2026-07-13
+> 마지막 업데이트: 2026-07-16
 >
 > **[공지] 이 문서는 현황판입니다. ToDo 항목은 각 날짜의 Log 파일에만 기록합니다.**
+>
+> **[공지] (2026-07-16~) 계획/설계/근거는 계획서(`Plan/`)에, 실제 구현 내용은 날짜별 Log에 기록합니다. 자세한 규칙은 [문서화 규칙](#문서화-규칙) 참조.**
 
 ---
 
@@ -10,6 +12,8 @@
 
 DirectX12 + Vulkan 크로스 플랫폼 3D 렌더링 엔진.
 개발 방식은 개념/가이드 위주 학습. 코드는 컴파일 가능한 수준으로 완성도 있게 작성.
+
+빠르게 상품화하는 엔진이 아니라, **어떤 최적화가 가능하고 그 최적화가 언제 필요한지를 비교·수치로 보여주는 포트폴리오**로 삼는다. CSM/IBL처럼 단계적으로 문제를 진단하고 근거를 남기며 구현하는 방식, Phase 2(멀티플랫폼 프러스텀 컬링)처럼 하나의 정답으로 좁히지 않고 여러 방식(CPU 브루트포스/Loose-Octree, GPU-Driven)을 모두 구현해 비교하는 방식이 이 성격을 따른다.
 
 ---
 
@@ -183,6 +187,26 @@ DebugTextPass
 
 ---
 
+## 문서화 규칙
+
+> 2026-07-16 신설. 이 날짜 이후 새로 시작하는 작업부터 적용한다 — 기존 `Plan_RenderQuality.md`/`Plan_Material_Driven.md` 등 과거 계획서를 이 규칙에 맞춰 소급 재작성하지는 않는다.
+
+**계획서(Plan)와 Log는 역할이 다르다.** 하나의 문서에 계획과 구현 결과를 함께 쓰면, 구현이 끝난 뒤 계획서를 계속 고쳐야 하고 같은 내용이 Log와 계획서 양쪽에 중복 서술되기 쉽다. 이를 막기 위해 아래처럼 역할을 분리한다.
+
+| 문서 | 역할 | 위치/이름 규칙 | 수정 시점 |
+|---|---|---|---|
+| **계획서(Plan)** | 계획·설계·근거(왜 이렇게 하기로 했는가) | `Plan/Plan_{주제}.md` (예: `Plan/Plan_Phase2.md`) | 계획/설계/근거 자체가 바뀔 때만 수정 |
+| **Log** | 실제 구현 내용(무엇을 어떻게 고쳤는가), Compact Log 단위 | `{YYYY-MM-DD}_Log.md` | 구현이 진행되는 그날그날 추가 |
+
+**연결 규칙:**
+
+1. **계획서에는 "무엇을 왜 하기로 했는가"만 남긴다.** 실제로 무엇을 구현했는지에 대한 상세 서술(수정 파일, 코드 변경 내역, 버그·검증 이력)은 전부 Log 쪽 책임이며, 계획서에 중복 기술하지 않는다.
+2. **구현이 완료되면 계획서의 해당 항목을 `~~취소선~~` 처리**하고(기존 관례 유지), 그 아래에 완료 날짜 Log 파일을 상대경로 마크다운 링크로 태그한다. 계획서는 `Plan/` 하위, Log는 `AgentLog/` 바로 아래에 있으므로 계획서에서 Log를 가리키려면 한 단계 위로 올라가야 한다 — 예: `Plan/Plan_Phase2.md` 안에서는 `` [2026-07-30_Log.md](../2026-07-30_Log.md) `` 형태.
+3. **반대 방향으로 Log의 `## Start Log`도 그날 대응하는 계획서를 태그한다** — `### [ToDo](../TODO.md#phase-N)`와 함께 `### [계획서](./Plan/Plan_{주제}.md)`를 나란히 걸어, 어느 문서에서 시작해도 서로 찾아갈 수 있게 한다(2026-07-30_Log.md 참조).
+4. Q&A 파일(`{YYYY-MM-DD}_Q&A.md`)은 이 분리와 별개로 기존 관례를 그대로 유지한다 — 계획서 작성 전 논의된 질문/답변 기록.
+
+---
+
 ## 문서 구조 (Log 및 Q&A 기록)
 
 | 파일 | 내용 |
@@ -217,6 +241,8 @@ DebugTextPass
 | [2026-07-12_Log.md](2026-07-12_Log.md) | Scene Scale 단위 통일(cm→m 변환), WorldObject Local/World Transform Hierarchy, SSAO 구현, 런타임 IBL/SSAO 비교 토글, Weighted Blended OIT |
 | [2026-07-13_Q&A.md](2026-07-13_Q&A.md) | CSM 설계 Q&A — Atlas vs Texture2DArray Depth, 사이드 이펙트, 드로우콜, blend/dither, GS/HS, mip level 비교 |
 | [2026-07-13_Log.md](2026-07-13_Log.md) | CSM(Cascaded Shadow Mapping) 구현 — Texture2DArray Depth 8캐스케이드, 활성 개수 런타임 조정(Num4/5), smooth blend, 캐스케이드 색상 오버레이(Num3). 버그 3종(버퍼 재사용 타이밍·행렬 row/column 의미론·HLSL cbuffer 스칼라 배열 패킹) 발견·수정, Math 유틸 정리(World/View 축 추출 함수 분리, `InvertRigidTransform`) |
+| [2026-07-16_Q&A.md](2026-07-16_Q&A.md) | 프러스텀 컬링 설계 Q&A — CPU 사전 필터링 vs GPU 클리핑 오해 정정, 멀티스레드 브루트포스 vs Loose-Octree 비교 |
+| [2026-07-30_Log.md](2026-07-30_Log.md) | Phase 2(멀티플랫폼 프러스텀 컬링) 착수 및 설계 — TODO.md Phase 2 신설, 계획서/Log 문서화 규칙 신설, Plan_Phase2.md 인터페이스·데이터 흐름 설계 및 최종 검증 완료 |
 | [Plan/Plan_Material_Driven.md](Plan/Plan_Material_Driven.md) | Material 중심 렌더링 계획서 (Phase 1~6 완료, Phase 7 Normal Mapping 대기) |
 | [Plan/Plan_Animation.md](Plan/Plan_Animation.md) | 스켈레탈 애니메이션 구현 계획 (Steps 1~11 완료) |
 | [Plan/AssetImporter.md](Plan/AssetImporter.md) | VaImportTool + 텍스처 파이프라인 구현 계획 |

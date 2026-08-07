@@ -26,8 +26,8 @@ enum class EBindingType : uint32_t
 	BufferSRV		= 5,	// SRV via root descriptor (t 레지스터) — StructuredBuffer / ByteAddressBuffer (compute 입력)
 };
 
-// 컬링 방향
-enum class ECullMode : uint32_t
+// 컬링 방향 (래스터라이저 백페이스 컬링 — 프러스텀 컬링과는 무관)
+enum class EBackfaceCullMode : uint32_t
 {
 	None	= 0,
 	Front	= 1,
@@ -85,7 +85,7 @@ struct PipelineStateDesc
 	uint32_t               rtvCount      = 1;
 	EPixelFormat           dsvFormat     = EPixelFormat::Unknown;
 
-	ECullMode              cullMode      = ECullMode::Back;
+	EBackfaceCullMode      cullMode      = EBackfaceCullMode::Back;
 	EBlendMode             blendMode     = EBlendMode::Opaque;
 	bool                   depthEnable   = false;
 	bool                   depthWrite    = true;

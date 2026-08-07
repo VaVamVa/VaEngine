@@ -146,7 +146,7 @@ void GBufferRenderer::Initialize(IRenderDevice* device, IDepthBuffer* sharedDept
     pipelineState = device->CreatePipelineState(psoDesc);
 
     PipelineStateDesc doubleSidedPsoDesc = psoDesc;
-    doubleSidedPsoDesc.cullMode = ECullMode::None;
+    doubleSidedPsoDesc.cullMode = EBackfaceCullMode::None;
     doubleSidedPipelineState = device->CreatePipelineState(doubleSidedPsoDesc);
 
     viewProjBuffer = device->CreateBuffer({
@@ -218,7 +218,7 @@ void GBufferRenderer::InitializeSkinned(IRenderDevice* device, const ShaderDesc&
     skinnedPipelineState = device->CreatePipelineState(psoDesc);
 
     PipelineStateDesc doubleSidedSkinnedDesc = psoDesc;
-    doubleSidedSkinnedDesc.cullMode = ECullMode::None;
+    doubleSidedSkinnedDesc.cullMode = EBackfaceCullMode::None;
     doubleSidedSkinnedPipelineState = device->CreatePipelineState(doubleSidedSkinnedDesc);
 
     skinnedInstanceBuffer = device->CreateBuffer({
@@ -288,7 +288,7 @@ void GBufferRenderer::RenderGBuffer(ICommandList* cmdList, const RenderScene& sc
         for (auto& [mesh, mat, count] : drawList)
         {
             // PSO 선택: DoubleSided ↔ BackFace
-            IPipelineState* pso = (mat && mat->GetCullMode() == ECullMode::None)
+            IPipelineState* pso = (mat && mat->GetCullMode() == EBackfaceCullMode::None)
                 ? doubleSidedPipelineState.get()
                 : pipelineState.get();
 
@@ -342,7 +342,7 @@ void GBufferRenderer::RenderGBuffer(ICommandList* cmdList, const RenderScene& sc
             continue;
 
         // PSO 선택
-        IPipelineState* pso = (cmd.material && cmd.material->GetCullMode() == ECullMode::None)
+        IPipelineState* pso = (cmd.material && cmd.material->GetCullMode() == EBackfaceCullMode::None)
             ? doubleSidedSkinnedPipelineState.get()
             : skinnedPipelineState.get();
 

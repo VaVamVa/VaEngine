@@ -27,7 +27,7 @@ public:
 
     // 렌더링 모드 — Renderer가 PSO 선택에 사용
     virtual EBlendMode  GetBlendMode()      const = 0;
-    virtual ECullMode   GetCullMode()       const = 0;
+    virtual EBackfaceCullMode GetCullMode() const = 0;
     virtual bool        IsDepthWrite()      const = 0;
     virtual float       GetAlphaThreshold() const = 0;
     virtual uint16_t    GetID()             const = 0;
@@ -51,7 +51,7 @@ public:
 
     // 렌더링 모드 세터
     virtual void SetBlendMode     (EBlendMode) = 0;
-    virtual void SetCullMode      (ECullMode)  = 0;
+    virtual void SetCullMode      (EBackfaceCullMode) = 0;
     virtual void SetDepthWrite    (bool)       = 0;
     virtual void SetAlphaThreshold(float)      = 0;
 

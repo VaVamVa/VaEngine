@@ -41,7 +41,7 @@ void DebugTextRenderer::Initialize(IRenderDevice* device, const ShaderDesc& shad
         .vertexInputCount = 3,
         .rtvFormats       = { EPixelFormat::R8G8B8A8_UNORM },
         .dsvFormat        = EPixelFormat::Unknown,
-        .cullMode         = ECullMode::None,
+        .cullMode         = EBackfaceCullMode::None,
         .blendMode        = EBlendMode::AlphaBlend,
         .depthEnable      = false,
         .bindingLayout    = bindingLayout.get()
