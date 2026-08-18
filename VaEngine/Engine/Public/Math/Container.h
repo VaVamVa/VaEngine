@@ -111,6 +111,20 @@ struct Vector4
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Plane (법선(normal)과 원점으로부터의 부호 있는 거리(distance)로 정의되는 무한 평면. 평면 방정식: { dot(normal, p) - distance = 0 }
+// ─────────────────────────────────────────────────────────────────────────────
+struct Plane
+{
+    Vector3 normal;
+    float distance;
+
+    float DistanceToPoint(const Vector3& point) const { return normal.Dot(point) - distance; }
+
+    Plane Normalized() const;
+};
+
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Quaternion  (xyzw 순서)
 // ─────────────────────────────────────────────────────────────────────────────
 struct Quaternion

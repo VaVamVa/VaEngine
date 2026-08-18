@@ -60,7 +60,7 @@
     4. [ ] Transform 위탁 고정식 Camera (FPS)
     5. [ ] Camera With Boom (Cam Chase with Easing)
 3. [ ] Collider 구현
-    - [ ] 바운딩 볼륨 타입 공유 — Sphere/AABB는 Phase 2(컬링)에서 정의하는 Math/ 공용 구조체 재사용, Capsule은 이 항목에서 신규 정의
+    - [ ] 바운딩 볼륨 타입 공유 — Sphere는 Phase 2(컬링)에서 정의하는 `Math/` 공용 구조체 재사용(컬링 전용 근거는 `Plan_Phase2.md` §1-6 참조), AABB·Capsule은 이 항목에서 신규 정의. Collider는 Capsule 전용이 아니라 오브젝트 종류에 따라 Sphere/AABB/Capsule을 선택적으로 쓰는 다중 형상 시스템(예: 인간형 캐릭터는 Capsule, 박스형 정적 오브젝트는 AABB)
     1. [ ] CapsuleShape 구현
         - [ ] `CubeShape`/`IcoSphereShape`/`UVSphereShape`와 동일 패턴의 절차적 지오메트리 생성
     2. [ ] Mesh에서 이용할 Collision Component 구현 (충돌 관련 DebugLine, 수식 존재)

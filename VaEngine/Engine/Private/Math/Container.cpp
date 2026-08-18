@@ -43,6 +43,15 @@ Vector3 Vector3::Normalized() const
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Plane
+// ─────────────────────────────────────────────────────────────────────────────
+Plane Plane::Normalized() const
+{
+    float l = normal.Length();
+    return l > Math::EPSILON ? Plane{ normal * (1.0f / l), distance * (1.0f / l) } : Plane{ Vector3{}, 0.0f };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Quaternion
 // ─────────────────────────────────────────────────────────────────────────────
 Quaternion Quaternion::operator*(const Quaternion& o) const
