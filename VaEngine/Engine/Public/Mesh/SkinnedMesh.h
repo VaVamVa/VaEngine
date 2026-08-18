@@ -1,7 +1,7 @@
 #pragma once
 
 #include "Mesh/IMesh.h"
-#include "RHI/IBuffer.h"
+#include "RHI/Buffer/IBuffer.h"
 #include "RHI/IResourceView.h"
 
 #include <memory>

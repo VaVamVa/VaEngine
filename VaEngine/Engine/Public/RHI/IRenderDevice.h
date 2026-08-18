@@ -1,5 +1,6 @@
 #pragma once
 
+#include <functional>
 #include <memory>
 #include "Common_RHI.h"
 
@@ -8,7 +9,7 @@
 #include "RHI/ISwapChain.h"
 #include "RHI/ICommandAlloc.h"
 #include "RHI/ICommandList.h"
-#include "RHI/IBuffer.h"
+#include "RHI/Buffer/IBuffer.h"
 #include "RHI/Shader/IShader.h"
 #include "RHI/Pipeline/IBindingLayout.h"
 #include "RHI/Pipeline/IPipelineState.h"
@@ -16,7 +17,8 @@
 #include "RHI/Texture/ITexture.h"
 #include "RHI/Texture/ITexture2DArray.h"
 #include "RHI/Texture/ITextureUAV.h"
-#include "RHI/IDepthBuffer.h"
+#include "RHI/Buffer/IDepthBuffer.h"
+#include "RHI/Buffer/IColorBuffer.h"
 #include "RHI/IResourceView.h"
 
 /*
@@ -45,10 +47,25 @@ public:
 	[[nodiscard]] virtual std::unique_ptr<ITexture>          CreateTextureFloat() = 0;
 	[[nodiscard]] virtual std::unique_ptr<ITexture2DArray>   CreateTexture2DArray() = 0;
 	[[nodiscard]] virtual std::unique_ptr<ITextureUAV>       CreateTextureUAV() = 0;
-	[[nodiscard]] virtual std::unique_ptr<IDepthBuffer>      CreateDepthBuffer(uint32_t width, uint32_t height, EPixelFormat format) = 0;
+	// arraySize>1: CSM 등 슬라이스별 DSV가 필요한 depth 배열(DepthBuffer_DirectX 참조)
+	[[nodiscard]] virtual std::unique_ptr<IDepthBuffer>      CreateDepthBuffer(uint32_t width, uint32_t height, EPixelFormat format,
+	                                                                          uint32_t arraySize = 1) = 0;
+	// optimizedClearColor: nullptr이면 (0,0,0,0) — IColorBuffer::Create 참조
+	[[nodiscard]] virtual std::unique_ptr<IColorBuffer>      CreateColorBuffer(EPixelFormat format, uint32_t width, uint32_t height,
+	                                                                          const float* optimizedClearColor = nullptr) = 0;
 
 	// Compute / structured-buffer 리소스 뷰 생성
 	// strideBytes == 0 이면 raw byte buffer (ByteAddressBuffer / RWByteAddressBuffer), > 0 이면 structured buffer.
 	[[nodiscard]] virtual std::unique_ptr<IResourceView>     CreateBufferSRV(IBuffer* buffer, uint32_t numElements, uint32_t strideBytes) = 0;
 	[[nodiscard]] virtual std::unique_ptr<IResourceView>     CreateBufferUAV(IBuffer* buffer, uint32_t numElements, uint32_t strideBytes) = 0;
+
+	// 복사 명령을 ICommandList 람다로 받아 즉시 실행하고 GPU 완료까지 대기.
+	// 호출 전 업로드 버퍼와 목적지 리소스의 배리어 상태를 올바르게 설정해야 함.
+	virtual void ImmediateSubmit(std::function<void(ICommandList*)> recordFn) = 0;
+
+protected:
+	// 각 API(DX12/Vulkan 등)가 자신의 GPU 검증 레이어 메시지를 VA_LOG로 연결하는 훅(NVI,
+	// WorldObject::Impl_AddToScene와 동일 패턴). 백엔드의 Initialize()가 디바이스 생성 직후
+	// 직접 호출한다 — 정의를 강제해 새 백엔드 추가 시 DX12/Vulkan 간 디버그 로깅 격차가 생기지 않게 한다.
+	virtual void Impl_RegisterDebugMessageCallback() = 0;
 };

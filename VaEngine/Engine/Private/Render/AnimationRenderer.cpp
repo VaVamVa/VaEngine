@@ -5,8 +5,8 @@
 
 #include "RHI/IRenderDevice.h"
 #include "RHI/ICommandList.h"
-#include "RHI/IRHIResource.h"
-#include "RHI/IDepthBuffer.h"
+#include "RHI/BaseRHIResource.h"
+#include "RHI/Buffer/IDepthBuffer.h"
 #include "RHI/Pipeline/PipelineDesc.h"
 #include "RHI/Pipeline/ComputePipelineDesc.h"
 #include "RHI/Common_RHI.h"
@@ -32,14 +32,14 @@ static constexpr uint32_t MAX_SPOT_LIGHTS_ANIM  = 4;
 
 struct LightsBufferData_Anim
 {
-    DirectionalLightData dirLight;
-    PointLightData       pointLights[MAX_POINT_LIGHTS_ANIM];
-    SpotLightData        spotLights[MAX_SPOT_LIGHTS_ANIM];
-    MaterialData         material;
-    float                eyePosW[3];
-    int32_t              numPointLights;
-    int32_t              numSpotLights;
-    float                _lightPad[3];
+    DirectionalLightData dirLight;                              //   32 bytes
+    PointLightData       pointLights[MAX_POINT_LIGHTS_ANIM];   //  384 bytes (48 * 8)
+    SpotLightData        spotLights[MAX_SPOT_LIGHTS_ANIM];     //  256 bytes (64 * 4)
+    float                eyePosW[3];                           //   12 bytes
+    int32_t              numPointLights;                       //    4 bytes
+    int32_t              numSpotLights;                        //    4 bytes
+    float                _lightPad[3];                         //   12 bytes
+    // total: 704 bytes → 768 (CBV 256-aligned)
 };
 
 namespace {
@@ -80,8 +80,8 @@ struct AnimationPass : IRenderPass
     void DeclareResources(std::vector<PassResourceDecl>& reads,
                           std::vector<PassResourceDecl>& writes) const override
     {
-        writes.push_back({ output.backBuffer,          EResourceState::RenderTarget });
-        writes.push_back({ depthBuffer->GetResource(), EResourceState::DepthWrite   });
+        writes.push_back({ output.backBuffer, EResourceState::RenderTarget });
+        writes.push_back({ depthBuffer,       EResourceState::DepthWrite   });
         // 각 mesh의 BonePalette: compute UAV write → graphics VS SRV read
         // graph가 자동으로 UnorderedAccess → NonPixelShaderResource barrier 삽입
         for (auto* m : meshes)
@@ -91,14 +91,15 @@ struct AnimationPass : IRenderPass
     void Execute(ICommandList* cmdList, const RenderScene& scene) override
     {
         RenderPassDesc passDesc;
-        passDesc.renderTargetCount            = 1;
-        passDesc.renderTargets[0].view        = output.backBufferView;
-        passDesc.renderTargets[0].loadAction  = ELoadAction::Load;   // ForwardRenderer 결과 유지
-        passDesc.renderTargets[0].storeAction = EStoreAction::Store;
+        passDesc.renderTargetCount              = 1;
+        passDesc.renderTargets[0].view          = output.backBufferView;
+        passDesc.renderTargets[0].loadAction    = ELoadAction::Load;   // ForwardRenderer 결과 유지
+        passDesc.renderTargets[0].storeAction   = EStoreAction::Store;
 
-        passDesc.depthStencil.view            = depthBuffer->GetView();
-        passDesc.depthStencil.loadAction      = ELoadAction::Load;   // 깊이 테스트 결과 유지
-        passDesc.depthStencil.storeAction     = EStoreAction::DontCare;
+        passDesc.depthStencil.view              = depthBuffer->GetView();
+        passDesc.depthStencil.loadAction        = ELoadAction::Clear;   // Deferred 적용 이후 Load->Clear
+        passDesc.depthStencil.storeAction       = EStoreAction::Store; // TransparentPass가 Load해야 하므로
+        passDesc.depthStencil.clearColor[0]     = 0.f;
 
         cmdList->BeginRenderPass(passDesc);
         cmdList->SetViewport(0.0f, 0.0f,
@@ -125,15 +126,16 @@ struct AnimationPass : IRenderPass
 
 void AnimationRenderer::Initialize(IRenderDevice* device, const ShaderDesc& shaderDesc)
 {
-    // root param 0: b0 Vertex, 1: b2 Pixel, 2: t0 Pixel, 3: t1 Vertex (BonePalette buffer)
-    // ※ b3 (CB_TweenFrame), t1 (TransformsMap) 은 compute pass로 이전 — graphics는 본 팔레트만 읽음
+    // root 0: b0 ViewProj(Vertex), 1: b1 Material(Pixel), 2: b2 Lights(Pixel),
+    //         3: t0 Diffuse(Pixel), 4: t1 BonePalette(Vertex)
     BindingEntry bindings[] = {
         { EBindingType::ConstantBuffer, 0, EShaderStage::Vertex },
+        { EBindingType::ConstantBuffer, 1, EShaderStage::Pixel  },
         { EBindingType::ConstantBuffer, 2, EShaderStage::Pixel  },
         { EBindingType::Texture,        0, EShaderStage::Pixel  },
         { EBindingType::BufferSRV,      1, EShaderStage::Vertex },
     };
-    bindingLayout = device->CreateBindingLayout(bindings, 4);
+    bindingLayout = device->CreateBindingLayout(bindings, 5);
 
     shader = device->CreateShader(shaderDesc);
 
@@ -155,7 +157,7 @@ void AnimationRenderer::Initialize(IRenderDevice* device, const ShaderDesc& shad
         .shader           = shader.get(),
         .vertexInputs     = inputs,
         .vertexInputCount = 10,
-        .rtvFormat        = EPixelFormat::R8G8B8A8_UNORM,
+        .rtvFormats       = { EPixelFormat::R8G8B8A8_UNORM },
         .dsvFormat        = EPixelFormat::D24_UNORM_S8_UINT,
         .depthEnable      = true,
         .bindingLayout    = bindingLayout.get()
@@ -184,6 +186,12 @@ void AnimationRenderer::Initialize(IRenderDevice* device, const ShaderDesc& shad
     });
 
     material = std::make_unique<Material>();
+    material->Initialize(device);
+
+    // 텍스처 폴백 (cmd.material 없을 때 사용)
+    constexpr uint32_t white = 0xFFFFFFFF;
+    defaultTexture = device->CreateTexture();
+    defaultTexture->LoadFromMemory(device, &white, 1, 1);
 
     // ── Compute infrastructure (Step 3) ─────────────────────────────────
     // root param 0: b0 (CB_TweenFrame), 1: t0 (TransformsMap), 2: u0 (BonePalette)
@@ -207,37 +215,40 @@ void AnimationRenderer::Initialize(IRenderDevice* device, const ShaderDesc& shad
     // BonePalette buffer는 SkinnedMesh가 소유 (mesh별로 한 buffer를 모든 인스턴스가 공유)
 }
 
-void AnimationRenderer::AddPasses(RenderGraph& graph, const FrameOutput& output, const RenderScene& scene)
+std::vector<SkinnedMesh*> AnimationRenderer::AddComputePasses(RenderGraph& graph, const RenderScene& scene)
 {
-    // ForwardRenderer 와 동일한 desc → 같은 핸들 반환 (depth 버퍼 재사용)
-    uint32_t depthHandle = graph.DeclareTransientDepth({
-        output.width, output.height, EPixelFormat::D24_UNORM_S8_UINT
-    });
-
-    // 이번 프레임 등장한 unique mesh 추출 (같은 mesh 공유하는 인스턴스끼리는 한 번만)
     std::vector<SkinnedMesh*> uniqueMeshes;
     {
         std::unordered_set<SkinnedMesh*> seen;
-        for (const SkinnedRenderCommand& cmd : scene.GetSkinnedCommands())
+        for (const RenderCommand& cmd : scene.GetCommands())
         {
-            if (cmd.mesh && seen.insert(cmd.mesh).second)
-                uniqueMeshes.push_back(cmd.mesh);
+            if (cmd.skinnedMesh && seen.insert(cmd.skinnedMesh).second)
+                uniqueMeshes.push_back(cmd.skinnedMesh);
         }
     }
-
-    // 각 mesh의 BonePalette를 graph에 import — 기본 상태는 UAV (Buffer 생성 시점과 일치)
-    for (auto* m : uniqueMeshes)
-        graph.ImportResource(m->GetBonePaletteBuffer(), EResourceState::UnorderedAccess);
-
-    // Compute pass (BonePalette 채움) → Graphics pass (BonePalette 읽음)
+    // 별도 등록 불필요 — BonePalette(BaseRHIResource)가 자기 상태를 스스로 들고 있어(Buffer_DirectX::Create()가
+    // Common으로 초기화) Compile()이 매 프레임 그 상태를 직접 읽고 갱신한다. 과거엔 ImportResource로 매 프레임
+    // UnorderedAccess를 강제해, GBufferRenderer가 같은 프레임에 NonPixelShaderResource로 읽고 끝나도
+    // 다음 프레임에 그 사실을 잃어버리는 버그가 있었다.
     graph.AddPass<BonePaletteComputePass>(this, uniqueMeshes);
-    graph.AddPass<AnimationPass>(this, output, depthHandle, std::move(uniqueMeshes));
+    return uniqueMeshes;
+}
+
+void AnimationRenderer::AddGraphicsPasses(RenderGraph& graph, const FrameOutput& output,
+                                           const std::vector<SkinnedMesh*>& uniqueMeshes)
+{
+    uint32_t depthHandle = graph.DeclareTransientDepth({
+        output.width, output.height, EPixelFormat::D24_UNORM_S8_UINT
+    });
+    graph.AddPass<AnimationPass>(this, output, depthHandle, uniqueMeshes);
 }
 
 void AnimationRenderer::Render(ICommandList* cmdList, const RenderScene& scene)
 {
-    const auto& cmds = scene.GetSkinnedCommands();
-    if (cmds.empty())
+    const auto& cmds = scene.GetCommands();
+    const bool hasSkinnedCmd = std::any_of(cmds.begin(), cmds.end(),
+        [](const RenderCommand& c) { return c.skinnedMesh != nullptr; });
+    if (!hasSkinnedCmd)
         return;
 
     const CameraData& cam = scene.GetCamera();
@@ -250,7 +261,7 @@ void AnimationRenderer::Render(ICommandList* cmdList, const RenderScene& scene)
         viewProjBuffer->Upload(&vpdata, sizeof(vpdata));
     }
 
-    // Lights + 재질 업로드 (root param 1 → b2)
+    // 조명 업로드 (root 2 → b2)
     {
         const LightingState& lighting = scene.GetLighting();
         LightsBufferData_Anim ldata = {};
@@ -263,7 +274,6 @@ void AnimationRenderer::Render(ICommandList* cmdList, const RenderScene& scene)
             std::min(lighting.spotLights.size(), static_cast<size_t>(MAX_SPOT_LIGHTS_ANIM)));
         for (int32_t i = 0; i < ldata.numSpotLights; ++i)
             ldata.spotLights[i] = lighting.spotLights[i];
-        ldata.material   = material->GetData();
         ldata.eyePosW[0] = cam.eyePos[0];
         ldata.eyePosW[1] = cam.eyePos[1];
         ldata.eyePosW[2] = cam.eyePos[2];
@@ -271,23 +281,38 @@ void AnimationRenderer::Render(ICommandList* cmdList, const RenderScene& scene)
     }
 
     pipelineState->Bind(cmdList);
-    cmdList->SetConstantBuffer(viewProjBuffer.get(), 0);  // b0
-    cmdList->SetConstantBuffer(lightsBuffer.get(),   1);  // b2
+    cmdList->SetConstantBuffer(viewProjBuffer.get(), 0);  // root 0 → b0
+    cmdList->SetConstantBuffer(lightsBuffer.get(),   2);  // root 2 → b2
     cmdList->SetPrimitiveTopology(EPrimitiveTopology::TriangleList);
 
-    for (const SkinnedRenderCommand& cmd : cmds)
+    // root 1(b1)·root 3(t0)을 루프 진입 전 기본값으로 바인딩
+    // (WorldAnimatedModel은 material 미보유 — cmd.material == nullptr인 경우 대비)
+    material->UpdateBufferIfDirty();
+    cmdList->SetConstantBuffer(material->GetBuffer(), 1);  // root 1 → b1
+    defaultTexture->Bind(cmdList, 3);                       // root 3 → t0
+
+    IMaterial* boundMat = nullptr;
+
+    for (const RenderCommand& cmd : cmds)
     {
-        if (!cmd.mesh)
+        if (!cmd.skinnedMesh)
             continue;
 
-        const uint32_t count = std::min(cmd.instanceCount, cmd.mesh->GetMaxInstances());
+        const uint32_t count = std::min(cmd.instanceCount, cmd.skinnedMesh->GetMaxInstances());
 
-        // Diffuse 텍스처 바인딩 (root param 2 → t0)
-        if (cmd.texture)
-            cmd.texture->Bind(cmdList, 2);
+        // Material (root 1 → b1) + 텍스처 (root 3 → t0) — 재질 변경 시에만 rebind
+        if (cmd.material != boundMat)
+        {
+            IMaterial* effMat = cmd.material ? cmd.material : material.get();
+            effMat->UpdateBufferIfDirty();
+            cmdList->SetConstantBuffer(effMat->GetBuffer(), 1);  // root 1 → b1
+            ITexture* albedo = cmd.material ? cmd.material->GetAlbedoTexture() : nullptr;
+            (albedo ? albedo : defaultTexture.get())->Bind(cmdList, 3);  // root 3 → t0
+            boundMat = cmd.material;
+        }
 
-        // BonePalette SRV — mesh별 buffer (root param 3 → t1)
-        cmdList->SetGraphicsSRV(cmd.mesh->GetBonePaletteSRV(), 3);
+        // BonePalette SRV (root 4 → t1)
+        cmdList->SetGraphicsSRV(cmd.skinnedMesh->GetBonePaletteSRV(), 4);
 
         // 인스턴스 월드 행렬 업로드 (slot 1 vertex buffer)
         instanceBuffer->Upload(&cmd.worldMatrix, count * sizeof(Matrix4x4));
@@ -296,30 +321,30 @@ void AnimationRenderer::Render(ICommandList* cmdList, const RenderScene& scene)
                                    count * static_cast<uint32_t>(sizeof(Matrix4x4)),
                                    0);
 
-        cmd.mesh->DrawInstanced(cmdList, count);
+        cmd.skinnedMesh->DrawInstanced(cmdList, count);
     }
 }
 
 void AnimationRenderer::RenderCompute(ICommandList* cmdList, const RenderScene& scene)
 {
-    const auto& cmds = scene.GetSkinnedCommands();
+    const auto& cmds = scene.GetCommands();
     if (cmds.empty()) return;
 
     computePipelineState->Bind(cmdList);  // SetComputeRootSignature + SetPipelineState
 
-    for (const SkinnedRenderCommand& cmd : cmds)
+    for (const RenderCommand& cmd : cmds)
     {
-        if (!cmd.mesh || !cmd.tweenBuffer || !cmd.transformsMap)
+        if (!cmd.skinnedMesh || !cmd.tweenBuffer || !cmd.transformsMap)
             continue;
 
-        const uint32_t count = std::min(cmd.instanceCount, cmd.mesh->GetMaxInstances());
+        const uint32_t count = std::min(cmd.instanceCount, cmd.skinnedMesh->GetMaxInstances());
 
         // root param 0: b0 ← TweenFrame
         cmdList->SetComputeConstantBuffer(cmd.tweenBuffer, 0);
         // root param 1: t0 ← TransformsMap (descriptor table, compute mode)
         cmd.transformsMap->Bind(cmdList, 1, /*isCompute*/ true);
         // root param 2: u0 ← mesh의 BonePalette UAV (root descriptor)
-        cmdList->SetComputeUAV(cmd.mesh->GetBonePaletteUAV(), 2);
+        cmdList->SetComputeUAV(cmd.skinnedMesh->GetBonePaletteUAV(), 2);
 
         // [numthreads(MAX_BONES, 1, 1)] × Dispatch(1, count, 1)
         cmdList->Dispatch(1, count, 1);

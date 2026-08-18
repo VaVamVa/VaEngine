@@ -5,7 +5,7 @@
 #include "RHI/ICommandQueue.h"
 #include "RHI/ICommandAlloc.h"
 #include "RHI/IFence.h"
-#include "RHI/IBuffer.h"
+#include "RHI/Buffer/IBuffer.h"
 #include "RHI/IResourceView.h"
 #include "RHI/Shader/IShader.h"
 #include "RHI/Pipeline/IBindingLayout.h"

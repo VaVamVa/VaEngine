@@ -278,6 +278,17 @@ Matrix4x4 Matrix4x4::PerspectiveFovRH(float fovY, float aspect, float nearZ, flo
     return r;
 }
 
+Matrix4x4 Matrix4x4::OrthographicLH(float width, float height, float nearZ, float farZ)
+{
+    Matrix4x4 r;
+    r.m[0][0] = 2.0f / width;
+    r.m[1][1] = 2.0f / height;
+    r.m[2][2] = 1.0f / (farZ - nearZ);
+    r.m[3][2] = -nearZ / (farZ - nearZ);
+    r.m[3][3] = 1.0f;
+    return r;
+}
+
 Matrix4x4 Matrix4x4::Inverse() const
 {
     // Gauss-Jordan 소거법 (부분 피벗)
@@ -342,4 +353,34 @@ Vector3 TransformDirection(const Vector3& v, const Matrix4x4& m)
         v.x*m.m[0][1] + v.y*m.m[1][1] + v.z*m.m[2][1],
         v.x*m.m[0][2] + v.y*m.m[1][2] + v.z*m.m[2][2]
     };
+}
+
+Vector3 UnprojectPoint(const Vector3& ndc, const Matrix4x4& invViewProj)
+{
+    const float x = ndc.x, y = ndc.y, z = ndc.z;
+    const float w = x*invViewProj.m[0][3] + y*invViewProj.m[1][3] + z*invViewProj.m[2][3] + invViewProj.m[3][3];
+    const float ox = x*invViewProj.m[0][0] + y*invViewProj.m[1][0] + z*invViewProj.m[2][0] + invViewProj.m[3][0];
+    const float oy = x*invViewProj.m[0][1] + y*invViewProj.m[1][1] + z*invViewProj.m[2][1] + invViewProj.m[3][1];
+    const float oz = x*invViewProj.m[0][2] + y*invViewProj.m[1][2] + z*invViewProj.m[2][2] + invViewProj.m[3][2];
+    const float invW = 1.0f / w;
+    return { ox * invW, oy * invW, oz * invW };
+}
+
+Matrix4x4 InvertRigidTransform(const Matrix4x4& viewMatrix)
+{
+    // 회전부(3x3) 전치: r.m[i][j] = viewMatrix.m[j][i] — 직교 행렬이라 전치가 곧 역행렬.
+    Matrix4x4 r;
+    r.m[0][0] = viewMatrix.m[0][0]; r.m[0][1] = viewMatrix.m[1][0]; r.m[0][2] = viewMatrix.m[2][0]; r.m[0][3] = 0.0f;
+    r.m[1][0] = viewMatrix.m[0][1]; r.m[1][1] = viewMatrix.m[1][1]; r.m[1][2] = viewMatrix.m[2][1]; r.m[1][3] = 0.0f;
+    r.m[2][0] = viewMatrix.m[0][2]; r.m[2][1] = viewMatrix.m[1][2]; r.m[2][2] = viewMatrix.m[2][2]; r.m[2][3] = 0.0f;
+
+    // 이동(eye, 카메라 월드 위치) = -(원본 translation) * (위에서 구한 전치 회전부).
+    // 직교 기저 성질(eye = Σ(eye·axis_i)*axis_i)로 유도되는 관계 — 유도 과정은 InvertRigidTransform
+    // 도입 배경(Container.h 주석, 260713-CompactLog#8) 참조.
+    const float tx = viewMatrix.m[3][0], ty = viewMatrix.m[3][1], tz = viewMatrix.m[3][2];
+    r.m[3][0] = -(tx*r.m[0][0] + ty*r.m[1][0] + tz*r.m[2][0]);
+    r.m[3][1] = -(tx*r.m[0][1] + ty*r.m[1][1] + tz*r.m[2][1]);
+    r.m[3][2] = -(tx*r.m[0][2] + ty*r.m[1][2] + tz*r.m[2][2]);
+    r.m[3][3] = 1.0f;
+    return r;
 }

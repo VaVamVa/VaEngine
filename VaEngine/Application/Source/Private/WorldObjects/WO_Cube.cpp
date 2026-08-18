@@ -2,15 +2,14 @@
 
 #include "RHI/IRenderDevice.h"
 #include "Mesh/CubeShape.h"
-#include "Scene/RenderScene.h"
 
 void WO_Cube::Initialize(IRenderDevice* device)
 {
-    mesh = std::make_unique<MeshPrimitive>();
-    mesh->Initialize(device, CubeShape{}.Build());
-}
-
-void WO_Cube::Impl_AddToScene(RenderScene& scene) const
-{
-    scene.AddMesh(mesh.get(), transform.GetMatrix());
+    auto m = std::make_unique<MeshPrimitive>();
+    m->Initialize(device, CubeShape{}.Build());
+    meshes.push_back(std::move(m));
+    EnsureMaterial();
+    material->Initialize(device);
+    material->SetBlendMode(EBlendMode::AlphaBlend);
+    material->SetAlbedo(1.0f, 1.0f, 1.0f, 0.5f);
 }

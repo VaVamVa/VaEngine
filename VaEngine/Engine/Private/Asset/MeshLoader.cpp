@@ -47,7 +47,8 @@ std::vector<MeshData> MeshLoader::Load(const std::string& path)
     {
         std::cerr << "[MeshLoader] Version mismatch in: " << path
                   << " (file=" << header.version
-                  << " expected=" << MESH_VERSION << ")\n";
+                  << " expected=" << MESH_VERSION << ") — 하위 호환 없음, 로드 실패\n";
+        return {};
     }
 
     std::vector<MeshData> result;

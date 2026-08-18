@@ -1,12 +1,12 @@
 #pragma once
 
-#include "RHI/IRHIResource.h"
+#include "RHI/BaseRHIResource.h"
 
 #include <cstring>
 
 class ICommandList;
 
-class IBuffer : public IRHIResource
+class IBuffer : public BaseRHIResource
 {
 public:
 	virtual ~IBuffer() = default;

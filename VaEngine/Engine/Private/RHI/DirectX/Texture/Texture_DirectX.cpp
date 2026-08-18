@@ -15,6 +15,7 @@ void Texture_DirectX::LoadFromFile(IRenderDevice* device, const char* path)
 	if (!pixels)
 		throw std::runtime_error("Failed to load texture file");
 
+	hasAlpha = (channels == 4);
 	Upload(static_cast<RenderDevice_DirectX*>(device),
 		pixels, static_cast<uint32_t>(width), static_cast<uint32_t>(height));
 	stbi_image_free(pixels);
@@ -63,48 +64,24 @@ void Texture_DirectX::Upload(RenderDevice_DirectX* rdDevice, const void* pixels,
 			rowSizeInBytes);
 	uploadBuffer->Unmap(0, nullptr);
 
-	// 5. 일회성 커맨드 인프라 생성
-	D3D12_COMMAND_QUEUE_DESC qDesc = { D3D12_COMMAND_LIST_TYPE_DIRECT };
-	ComPtr<ID3D12CommandQueue>        uploadQueue;
-	ComPtr<ID3D12CommandAllocator>    uploadAlloc;
-	ComPtr<ID3D12GraphicsCommandList> uploadCmd;
-	device->CreateCommandQueue(&qDesc, IID_PPV_ARGS(&uploadQueue));
-	device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&uploadAlloc));
-	device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, uploadAlloc.Get(), nullptr, IID_PPV_ARGS(&uploadCmd));
+	// 5. 복사 명령 기록 및 GPU 완료 대기
+	RawResource texRes{ textureResource.Get() };
+	RawResource uplRes{ uploadBuffer.Get() };
+	rdDevice->ImmediateSubmit([&](ICommandList* cmdList)
+	{
+		cmdList->CopyBufferToTexture(
+			&texRes, 0,
+			&uplRes, footprint.Offset,
+			static_cast<uint32_t>(width), height,
+			footprint.Footprint.RowPitch);
 
-	// 6. 복사 명령 기록
-	D3D12_TEXTURE_COPY_LOCATION dstLoc = {};
-	dstLoc.pResource        = textureResource.Get();
-	dstLoc.Type             = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
-	dstLoc.SubresourceIndex = 0;
+		ResourceBarrier barrier{ &texRes,
+			EResourceState::CopyDest,
+			EResourceState::PixelShaderResource };
+		cmdList->SetResourceBarrier(1, &barrier);
+	});
 
-	D3D12_TEXTURE_COPY_LOCATION srcLoc = {};
-	srcLoc.pResource       = uploadBuffer.Get();
-	srcLoc.Type            = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
-	srcLoc.PlacedFootprint = footprint;
-
-	uploadCmd->CopyTextureRegion(&dstLoc, 0, 0, 0, &srcLoc, nullptr);
-
-	auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(
-		textureResource.Get(),
-		D3D12_RESOURCE_STATE_COPY_DEST,
-		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
-	uploadCmd->ResourceBarrier(1, &barrier);
-	uploadCmd->Close();
-
-	// 7. 실행 및 GPU 완료 대기
-	ID3D12CommandList* lists[] = { uploadCmd.Get() };
-	uploadQueue->ExecuteCommandLists(1, lists);
-
-	ComPtr<ID3D12Fence> fence;
-	device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&fence));
-	HANDLE event = CreateEventEx(nullptr, nullptr, 0, EVENT_ALL_ACCESS);
-	uploadQueue->Signal(fence.Get(), 1);
-	fence->SetEventOnCompletion(1, event);
-	WaitForSingleObject(event, INFINITE);
-	CloseHandle(event);
-
-	// 8. 전역 SRV heap에서 슬롯 할당 후 SRV 생성
+	// 7. 전역 SRV heap에서 슬롯 할당 후 SRV 생성
 	auto srv = rdDevice->AllocateSRVDescriptor();
 	srvGpuHandle  = srv.gpu;
 	globalSrvHeap = rdDevice->GetGlobalSRVHeap();

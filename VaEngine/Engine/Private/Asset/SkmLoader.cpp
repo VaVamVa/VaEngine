@@ -46,6 +46,13 @@ SkmLoadResult SkmLoader::Load(const std::string& path)
         std::cerr << "[SkmLoader] Invalid magic: " << path << "\n";
         return {};
     }
+    if (header.version != SKM_VERSION)
+    {
+        std::cerr << "[SkmLoader] Version mismatch in: " << path
+                  << " (file=" << header.version
+                  << " expected=" << SKM_VERSION << ") — 하위 호환 없음, 로드 실패\n";
+        return {};
+    }
 
     SkmLoadResult result;
 

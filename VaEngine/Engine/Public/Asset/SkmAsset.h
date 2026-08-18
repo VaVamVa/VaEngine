@@ -3,7 +3,7 @@
 #include <cstdint>
 
 constexpr uint32_t SKM_MAGIC   = 0x204D4B53; // 'SKM '
-constexpr uint32_t SKM_VERSION = 1;
+constexpr uint32_t SKM_VERSION = 2;  // v2: SkinnedVertex에 tangent[4] 추가 (stride 80→96), 하위 호환 없음
 
 struct SkmFileHeader
 {

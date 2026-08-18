@@ -15,6 +15,9 @@ public:
 
 	Matrix4x4 GetView()       const;
 	Matrix4x4 GetProjection() const;
+	Vector3   GetPosition()   const;
+	float     GetYaw()        const;
+	float     GetPitch()      const;
 
 private:
 	std::unique_ptr<FreeCamera> camera;

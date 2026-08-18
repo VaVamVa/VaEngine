@@ -72,6 +72,18 @@ public:
 	// 호출 전 src는 CopySource, dst는 CopyDest 상태여야 함.
 	virtual void CopyBuffer(IBuffer* dst, IBuffer* src, uint64_t bytes) = 0;
 
+	// Upload 버퍼 → Texture 서브리소스 복사 (DX12: CopyTextureRegion, Vulkan: vkCmdCopyBufferToImage)
+	// 호출 전 srcBuffer는 CopySource, dstTexture는 CopyDest 상태여야 함.
+	// rowPitch는 D3D12_TEXTURE_DATA_PITCH_ALIGNMENT(256) 단위 정렬 값을 전달해야 함.
+	virtual void CopyBufferToTexture(
+		BaseRHIResource* dstTexture,
+		uint32_t      dstSubresource,
+		BaseRHIResource* srcBuffer,
+		uint64_t      srcOffset,
+		uint32_t      width,
+		uint32_t      height,
+		uint32_t      rowPitch) = 0;
+
 #pragma endregion
 
 #pragma region Compute Commands
@@ -88,6 +100,6 @@ public:
 	virtual void Dispatch(uint32_t groupCountX, uint32_t groupCountY, uint32_t groupCountZ) = 0;
 
 	// UAV 동기화 — compute 쓰기 → 후속 패스 읽기 사이에 삽입
-	virtual void UAVBarrier(IRHIResource* resource) = 0;
+	virtual void UAVBarrier(BaseRHIResource* resource) = 0;
 #pragma endregion
 };

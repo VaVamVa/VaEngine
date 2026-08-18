@@ -3,6 +3,7 @@
 
 #include "Exporter.h"
 #include "Asset/MeshAsset.h"
+#include "Mesh/MeshData.h"
 
 #include <filesystem>
 #include <fstream>
@@ -98,7 +99,7 @@ bool Exporter::ExportMesh(
     header.meshCount = static_cast<uint32_t>(meshes.size());
     f.write(reinterpret_cast<const char*>(&header), sizeof(header));
 
-    constexpr uint32_t vertexStride = 48;
+    constexpr uint32_t vertexStride = sizeof(PrimitiveVertex);
 
     for (const auto& sub : meshes)
     {

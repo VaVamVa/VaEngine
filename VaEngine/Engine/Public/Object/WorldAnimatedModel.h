@@ -5,7 +5,7 @@
 #include "Animation/AnimController.h"
 #include "Animation/AnimClip.h"
 #include "Mesh/SkinnedMesh.h"
-#include "RHI/IBuffer.h"
+#include "RHI/Buffer/IBuffer.h"
 #include "RHI/Texture/ITexture.h"
 #include "RHI/Texture/ITexture2DArray.h"
 
@@ -15,14 +15,16 @@
 
 class IRenderDevice;
 class RenderScene;
+class IMaterial;
 
 class WorldAnimatedModel : public WorldObject
 {
 public:
+    // matlPath: .matl 텍스트 파일 경로 (diffuse_tex=/normal_tex= 파싱, 빈 문자열이면 텍스처 로드 생략)
     void Initialize(IRenderDevice* device,
                     const std::string& skmPath,
                     const std::vector<std::string>& clipPaths,
-                    const std::string& texturePath = {});
+                    const std::string& matlPath = {});
 
     void Update(float deltaTime);
 
@@ -36,6 +38,7 @@ public:
 
     uint32_t           GetClipCount()              const { return clipCount; }
     const std::string& GetClipName(uint32_t index) const { return clips[index].name; }
+    IMaterial*         GetMaterial()               const { return material.get(); }
 
 
 protected:
@@ -47,6 +50,8 @@ private:
     std::unique_ptr<Skeleton>                   skeleton;
     std::vector<std::unique_ptr<SkinnedMesh>>   meshes;
     std::unique_ptr<ITexture>                   texture;
+    std::unique_ptr<ITexture>                   normalTexture;
+    std::unique_ptr<IMaterial>                  material;
     std::unique_ptr<ITexture2DArray>            transformsMap;
     std::unique_ptr<IBuffer>                    tweenBuffer;
     std::vector<AnimClipData>                   clips;

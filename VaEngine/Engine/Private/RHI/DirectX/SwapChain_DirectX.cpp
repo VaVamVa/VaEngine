@@ -72,7 +72,7 @@ void SwapChain_DirectX::Resize(uint32_t width, uint32_t height)
 
 }
 
-IRHIResource* SwapChain_DirectX::GetCurrentBackBuffer() const
+BaseRHIResource* SwapChain_DirectX::GetCurrentBackBuffer() const
 {
 	return const_cast<BackBufferResource*>(&backBuffers[GetCurrentBackBufferIndex()]);
 }
@@ -110,6 +110,7 @@ void SwapChain_DirectX::CreateRTV(RenderDevice_DirectX* device)
 		{
 			throw std::runtime_error("Failed to get back buffer from Swap Chain");
 		}
+		backBuffers[i].MarkCreated();  // trackedState = Common (DXGI 스왑체인 버퍼의 관행적 초기 상태)
 
 		// RTV 생성 & 힙의 i번째 슬롯에 RTV를 할당
 		device->GetDevice()->CreateRenderTargetView(backBuffers[i].resource.Get(), nullptr, rtvHandle);

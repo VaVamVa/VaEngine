@@ -1,10 +1,9 @@
 #pragma once
 
-#include "Render/IRenderer.h"
 #include "Render/IMaterial.h"
 #include "Animation/AnimController.h"
 
-#include "RHI/IBuffer.h"
+#include "RHI/Buffer/IBuffer.h"
 #include "RHI/IResourceView.h"
 #include "RHI/Shader/IShader.h"
 #include "RHI/Texture/ITexture.h"
@@ -12,14 +11,21 @@
 #include "RHI/Pipeline/IPipelineState.h"
 
 #include <memory>
+#include <vector>
 
+class IRenderDevice;
+class RenderGraph;
+struct FrameOutput;
 class RenderScene;
+class SkinnedMesh;
 
-class AnimationRenderer : public IRenderer
+class AnimationRenderer
 {
 public:
-    void Initialize(IRenderDevice* device, const ShaderDesc& shaderDesc) override;
-    void AddPasses(RenderGraph& graph, const FrameOutput& output, const RenderScene& scene) override;
+    void Initialize(IRenderDevice* device, const ShaderDesc& shaderDesc);
+    std::vector<SkinnedMesh*> AddComputePasses(RenderGraph& graph, const RenderScene& scene);
+    void AddGraphicsPasses(RenderGraph& graph, const FrameOutput& output,
+                           const std::vector<SkinnedMesh*>& uniqueMeshes);
     void Render(ICommandList* cmdList, const RenderScene& scene);
 
     // Step 3 — bone palette compute pass (graphics pass 직전에 실행)
@@ -44,6 +50,7 @@ private:
     std::unique_ptr<IBuffer>        instanceBuffer;   // slot 1: per-instance world
 
     std::unique_ptr<IMaterial>      material;
+    std::unique_ptr<ITexture>       defaultTexture;  // 폴백 1×1 흰색 텍스처
 
     // Compute pass — bone palette pre-computation
     std::unique_ptr<IBindingLayout> computeBindingLayout;

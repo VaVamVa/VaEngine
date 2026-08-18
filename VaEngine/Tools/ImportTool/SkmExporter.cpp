@@ -1,5 +1,6 @@
 #include "SkmExporter.h"
 #include "Asset/SkmAsset.h"
+#include "Mesh/SkinnedVertex.h"
 
 #include <fstream>
 #include <iostream>
@@ -48,7 +49,7 @@ bool SkmExporter::ExportSkm(const SkinnedConvertResult& result,
         WriteStrS(f, mesh.name);
         WriteStrS(f, mesh.materialName);
 
-        constexpr uint32_t kStride = 80;
+        constexpr uint32_t kStride = sizeof(SkinnedVertex);
         const uint32_t vertexCount = static_cast<uint32_t>(mesh.vertices.size()) / kStride;
         WriteU32S(f, vertexCount);
         WriteU32S(f, kStride);

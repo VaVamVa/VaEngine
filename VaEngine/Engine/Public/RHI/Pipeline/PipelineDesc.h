@@ -37,9 +37,13 @@ enum class ECullMode : uint32_t
 // 블렌드 모드
 enum class EBlendMode : uint32_t
 {
-	Opaque		= 0,
-	AlphaBlend	= 1,
-	Additive	= 2,
+	Opaque		  = 0,
+	AlphaBlend	  = 1,
+	Additive	  = 2,
+	// Weighted Blended OIT 전용 — RT0(accum) 가산 + RT1(revealage) 곱셈을 한 PSO에서 동시에 사용.
+	// 범용 "렌더타겟별 독립 블렌드" 시스템이 아니라 이 조합 하나만 실용적으로 배선(Refactoring_At260711.md
+	// 항목 2와 동일한 패턴 — 지금 필요한 조합만 하드코딩, 세 번째 조합이 필요해지면 그때 일반화).
+	OITAccumulate = 3,
 };
 
 // 프리미티브 토폴로지 타입 (PSO 생성 시 지정)
@@ -77,12 +81,14 @@ struct PipelineStateDesc
 	const VertexInputDesc* vertexInputs;
 	uint32_t               vertexInputCount;
 
-	EPixelFormat           rtvFormat;
-	EPixelFormat           dsvFormat  = EPixelFormat::Unknown;
+	EPixelFormat           rtvFormats[8] = {};
+	uint32_t               rtvCount      = 1;
+	EPixelFormat           dsvFormat     = EPixelFormat::Unknown;
 
 	ECullMode              cullMode      = ECullMode::Back;
 	EBlendMode             blendMode     = EBlendMode::Opaque;
 	bool                   depthEnable   = false;
+	bool                   depthWrite    = true;
 	EPrimitiveTopologyType topologyType  = EPrimitiveTopologyType::Triangle;
 
 	IBindingLayout*        bindingLayout = nullptr;

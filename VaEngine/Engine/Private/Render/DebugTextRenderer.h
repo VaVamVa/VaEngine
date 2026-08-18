@@ -1,6 +1,6 @@
 #pragma once
 
-#include "RHI/IBuffer.h"
+#include "RHI/Buffer/IBuffer.h"
 #include "RHI/Shader/IShader.h"
 #include "RHI/Pipeline/IBindingLayout.h"
 #include "RHI/Pipeline/IPipelineState.h"

@@ -67,10 +67,45 @@ void PipelineState_DirectX::Create(ID3D12Device* device, const PipelineStateDesc
 		rt.BlendOpAlpha         = D3D12_BLEND_OP_ADD;
 		rt.RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;
 	}
+	else if (desc.blendMode == EBlendMode::OITAccumulate)
+	{
+		// Weighted Blended OIT — RT0(accum)은 가산, RT1(revealage)은 곱셈으로 동시에 블렌드해야
+		// 해서 IndependentBlendEnable이 필요하다(이 조합이 이 엔진에서 유일한 요구 사례).
+		blendDesc.IndependentBlendEnable = TRUE;
+
+		// RT0 — accum: 셰이더가 이미 weight를 곱해 내보내므로 단순 가산(ONE, ONE)
+		auto& rt0                = blendDesc.RenderTarget[0];
+		rt0.BlendEnable          = TRUE;
+		rt0.SrcBlend             = D3D12_BLEND_ONE;
+		rt0.DestBlend            = D3D12_BLEND_ONE;
+		rt0.BlendOp              = D3D12_BLEND_OP_ADD;
+		rt0.SrcBlendAlpha        = D3D12_BLEND_ONE;
+		rt0.DestBlendAlpha       = D3D12_BLEND_ONE;
+		rt0.BlendOpAlpha         = D3D12_BLEND_OP_ADD;
+		rt0.RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;
+
+		// RT1 — revealage: dst_new = dst_old * src(=1-alpha), (1,1,1,1)에서 시작해 Π(1-alpha_i)로 수렴
+		auto& rt1                = blendDesc.RenderTarget[1];
+		rt1.BlendEnable          = TRUE;
+		rt1.SrcBlend             = D3D12_BLEND_ZERO;
+		rt1.DestBlend            = D3D12_BLEND_SRC_COLOR;
+		rt1.BlendOp              = D3D12_BLEND_OP_ADD;
+		rt1.SrcBlendAlpha        = D3D12_BLEND_ZERO;
+		rt1.DestBlendAlpha       = D3D12_BLEND_SRC_ALPHA;
+		rt1.BlendOpAlpha         = D3D12_BLEND_OP_ADD;
+		rt1.RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;
+	}
 	psoDesc.BlendState = blendDesc;
-	psoDesc.DepthStencilState = desc.depthEnable
-		? CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT)   // DepthEnable=TRUE, DepthFunc=LESS, WriteAll
-		: CD3DX12_DEPTH_STENCIL_DESC();               // 전부 비활성
+	if (desc.depthEnable)
+	{
+		auto depthDesc = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
+		depthDesc.DepthWriteMask = desc.depthWrite ? D3D12_DEPTH_WRITE_MASK_ALL : D3D12_DEPTH_WRITE_MASK_ZERO;
+		psoDesc.DepthStencilState = depthDesc;
+	}
+	else
+	{
+		psoDesc.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC();  // 전부 비활성
+	}
 	psoDesc.DSVFormat = (desc.depthEnable && desc.dsvFormat != EPixelFormat::Unknown)
 		? static_cast<DXGI_FORMAT>(desc.dsvFormat)
 		: DXGI_FORMAT_UNKNOWN;
@@ -81,8 +116,9 @@ void PipelineState_DirectX::Create(ID3D12Device* device, const PipelineStateDesc
 	case EPrimitiveTopologyType::Point: psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_POINT; break;
 	default:                            psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE; break;
 	}
-	psoDesc.NumRenderTargets                    = 1;
-	psoDesc.RTVFormats[0]                       = static_cast<DXGI_FORMAT>(desc.rtvFormat);
+	psoDesc.NumRenderTargets = desc.rtvCount;
+	for (uint32_t i = 0; i < desc.rtvCount; ++i)
+		psoDesc.RTVFormats[i] = static_cast<DXGI_FORMAT>(desc.rtvFormats[i]);
 	psoDesc.SampleDesc.Count                    = 1;
 
 	if (FAILED(device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&pipelineState))))

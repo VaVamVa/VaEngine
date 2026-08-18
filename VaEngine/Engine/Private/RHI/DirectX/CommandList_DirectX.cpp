@@ -1,7 +1,7 @@
 #include "CommandList_DirectX.h"
 #include "CommandAlloc_DirectX.h"
 #include "RenderDevice_DirectX.h"
-#include "RHI/IRHIResource.h"
+#include "RHI/BaseRHIResource.h"
 
 #include "SwapChain_DirectX.h"
 
@@ -9,28 +9,34 @@
 
 D3D12_RESOURCE_STATES GetResourceState(EResourceState state)
 {
-	switch (state)
-	{
-	case EResourceState::Present:
-	case EResourceState::Common:					return D3D12_RESOURCE_STATE_COMMON;
-	case EResourceState::VertexBuffer:				return D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER;
-	case EResourceState::IndexBuffer:				return D3D12_RESOURCE_STATE_INDEX_BUFFER;
-	case EResourceState::RenderTarget:				return D3D12_RESOURCE_STATE_RENDER_TARGET;
-	case EResourceState::UnorderedAccess:			return D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
-	case EResourceState::DepthWrite:				return D3D12_RESOURCE_STATE_DEPTH_WRITE;
-	case EResourceState::DepthRead:					return D3D12_RESOURCE_STATE_DEPTH_READ;
-	case EResourceState::NonPixelShaderResource:	return D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
-	case EResourceState::PixelShaderResource:		return D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
-	case EResourceState::IndirectArgument:			return D3D12_RESOURCE_STATE_INDIRECT_ARGUMENT;
-	case EResourceState::CopyDest:					return D3D12_RESOURCE_STATE_COPY_DEST;
-	case EResourceState::CopySource:				return D3D12_RESOURCE_STATE_COPY_SOURCE;
-	case EResourceState::ResolveDest:				return D3D12_RESOURCE_STATE_RESOLVE_DEST;
-	case EResourceState::ResolveSource:				return D3D12_RESOURCE_STATE_RESOLVE_SOURCE;
-	case EResourceState::RaytracingAcceleration:	return D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE;
+	if (state == EResourceState::Common || state == EResourceState::Present)
+		return D3D12_RESOURCE_STATE_COMMON;
 
-	default:										return D3D12_RESOURCE_STATE_COMMON;
-	}
+	const uint32_t s = static_cast<uint32_t>(state);
+	D3D12_RESOURCE_STATES result = D3D12_RESOURCE_STATE_COMMON;
 
+	if (s & uint32_t(EResourceState::VertexBuffer))            result |= D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER;
+	if (s & uint32_t(EResourceState::IndexBuffer))             result |= D3D12_RESOURCE_STATE_INDEX_BUFFER;
+	if (s & uint32_t(EResourceState::RenderTarget))            result |= D3D12_RESOURCE_STATE_RENDER_TARGET;
+	if (s & uint32_t(EResourceState::UnorderedAccess))         result |= D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+	if (s & uint32_t(EResourceState::DepthWrite))              result |= D3D12_RESOURCE_STATE_DEPTH_WRITE;
+	if (s & uint32_t(EResourceState::DepthRead))               result |= D3D12_RESOURCE_STATE_DEPTH_READ;
+	if (s & uint32_t(EResourceState::NonPixelShaderResource))  result |= D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
+	if (s & uint32_t(EResourceState::PixelShaderResource))     result |= D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+	if (s & uint32_t(EResourceState::IndirectArgument))        result |= D3D12_RESOURCE_STATE_INDIRECT_ARGUMENT;
+	if (s & uint32_t(EResourceState::CopyDest))                result |= D3D12_RESOURCE_STATE_COPY_DEST;
+	if (s & uint32_t(EResourceState::CopySource))              result |= D3D12_RESOURCE_STATE_COPY_SOURCE;
+	if (s & uint32_t(EResourceState::ResolveDest))             result |= D3D12_RESOURCE_STATE_RESOLVE_DEST;
+	if (s & uint32_t(EResourceState::ResolveSource))           result |= D3D12_RESOURCE_STATE_RESOLVE_SOURCE;
+	if (s & uint32_t(EResourceState::RaytracingAcceleration))  result |= D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE;
+
+	return result;
+}
+
+CommandList_DirectX::CommandList_DirectX(ID3D12GraphicsCommandList* handle) noexcept
+{
+    handle->AddRef();
+    commandList.Attach(handle);
 }
 
 void CommandList_DirectX::Register(IRenderDevice* device, const CommandListDesc& desc)
@@ -199,7 +205,7 @@ void CommandList_DirectX::DrawInstanced(uint32_t vertexCount, uint32_t instanceC
 }
 
 void CommandList_DirectX::SetPrimitiveTopology(EPrimitiveTopology topology)
-{
+{ 
 	D3D12_PRIMITIVE_TOPOLOGY dxTopology = D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
 	switch (topology)
 	{
@@ -256,6 +262,32 @@ void CommandList_DirectX::CopyBuffer(IBuffer* dst, IBuffer* src, uint64_t bytes)
 	commandList->CopyBufferRegion(dstRes, 0, srcRes, 0, bytes);
 }
 
+void CommandList_DirectX::CopyBufferToTexture(
+	BaseRHIResource* dstTexture, uint32_t dstSubresource,
+	BaseRHIResource* srcBuffer,  uint64_t srcOffset,
+	uint32_t width, uint32_t height, uint32_t rowPitch)
+{
+	auto* dxDst = static_cast<ID3D12Resource*>(dstTexture->GetNativeResource());
+	auto* dxSrc = static_cast<ID3D12Resource*>(srcBuffer->GetNativeResource());
+
+	D3D12_TEXTURE_COPY_LOCATION dst = {};
+	dst.pResource        = dxDst;
+	dst.Type             = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
+	dst.SubresourceIndex = dstSubresource;
+
+	D3D12_TEXTURE_COPY_LOCATION src = {};
+	src.pResource                          = dxSrc;
+	src.Type                               = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
+	src.PlacedFootprint.Offset             = srcOffset;
+	src.PlacedFootprint.Footprint.Format   = dxDst->GetDesc().Format;
+	src.PlacedFootprint.Footprint.Width    = width;
+	src.PlacedFootprint.Footprint.Height   = height;
+	src.PlacedFootprint.Footprint.Depth    = 1;
+	src.PlacedFootprint.Footprint.RowPitch = rowPitch;
+
+	commandList->CopyTextureRegion(&dst, 0, 0, 0, &src, nullptr);
+}
+
 void CommandList_DirectX::SetComputeConstantBuffer(IBuffer* cb, uint32_t slot)
 {
 	D3D12_GPU_VIRTUAL_ADDRESS address =
@@ -284,7 +316,7 @@ void CommandList_DirectX::Dispatch(uint32_t groupCountX, uint32_t groupCountY, u
 	commandList->Dispatch(groupCountX, groupCountY, groupCountZ);
 }
 
-void CommandList_DirectX::UAVBarrier(IRHIResource* resource)
+void CommandList_DirectX::UAVBarrier(BaseRHIResource* resource)
 {
 	D3D12_RESOURCE_BARRIER barrier = {};
 	barrier.Type          = D3D12_RESOURCE_BARRIER_TYPE_UAV;

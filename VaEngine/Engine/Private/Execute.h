@@ -1,9 +1,8 @@
 #pragma once
 
 #include "Interfaces/IExecute.h"
-#include "Render/ForwardRenderer.h"
+#include "Render/SceneRenderer.h"
 #include "Render/RenderGraph.h"
-#include "Render/AnimationRenderer.h"
 
 #include "RHI/IRenderDevice.h"
 #include "RHI/ICommandQueue.h"
@@ -17,6 +16,8 @@
 #include "System/InputSystem.h"
 #include "System/ITime.h"
 #include "System/TimerSystem.h"
+
+#include "Utilities/DebuggingHelper.h"  // VA_DEBUG
 
 #include <memory>
 #include <cstdint>
@@ -63,7 +64,11 @@ private:
 	std::unique_ptr<ITime>           time;
 	std::unique_ptr<TimerSystem>     timerSystem;
 
-	ForwardRenderer                  renderer;
-	AnimationRenderer                animationRenderer;
+	SceneRenderer                    sceneRenderer;
 	RenderGraph                      renderGraph;
+
+#if VA_DEBUG
+	// 로그에서 프레임 경계를 확인하기 위한 카운터 — OnLoop() 시작 시 VA_LOG로 찍는다.
+	uint64_t                         frameNumber = 0;
+#endif
 };

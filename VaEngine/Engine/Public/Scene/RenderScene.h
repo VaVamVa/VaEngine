@@ -2,8 +2,10 @@
 
 #include "Math/Container.h"
 #include "Render/ILight.h"
+#include "Render/IMaterial.h"
 #include "Animation/AnimController.h"
 #include "Utilities/DebuggingHelper.h"
+#include "RHI/Texture/ITexture.h"
 
 #include <algorithm>
 #include <vector>
@@ -11,7 +13,6 @@
 #include <format>
 
 class IMesh;
-class ITexture;
 class ITexture2DArray;
 class SkinnedMesh;
 class IBuffer;
@@ -31,6 +32,15 @@ struct LightingState
 //   - 반투명: Depth 클수록 먼저 (back-to-front, 알파 블렌딩 정확도)
 using RenderSortKey = uint64_t;
 using SceneObjectID = uint64_t;
+
+// Client(Application)가 오브젝트별로 설정하는 렌더링 속성.
+// depth·translucent·pass 등 Engine이 자동 결정하는 값은 포함하지 않는다.
+struct RenderObjectDesc
+{
+	uint8_t       layer      = 0;   // 렌더링 레이어 (0-15)
+	uint16_t      materialID = 0;   // PSO 배칭용 (향후 확장)
+	SceneObjectID objectID   = 0;   // 피킹/선택용 ID
+};
 
 struct SortKeyDesc
 {
@@ -61,20 +71,16 @@ inline RenderSortKey MakeSortKey(const SortKeyDesc& desc)
 
 struct RenderCommand
 {
-	RenderSortKey sortKey   = 0;
-	SceneObjectID objectID  = 0;
-	IMesh*        mesh      = nullptr;
-	Matrix4x4     worldMatrix;
-	ITexture*     texture   = nullptr;
-};
-
-struct SkinnedRenderCommand
-{
-	SkinnedMesh*     mesh          = nullptr;
-	ITexture*        texture       = nullptr;
-	ITexture2DArray* transformsMap = nullptr;
-	IBuffer*         tweenBuffer   = nullptr;  // CB_TweenFrame 데이터
+	RenderSortKey    sortKey       = 0;
+	SceneObjectID    objectID      = 0;
+	IMesh*           mesh          = nullptr;
 	Matrix4x4        worldMatrix;
+	IMaterial*       material      = nullptr;
+
+	// Skinned Mesh Data (Optional)
+	SkinnedMesh*     skinnedMesh   = nullptr;
+	ITexture2DArray* transformsMap = nullptr;
+	IBuffer*         tweenBuffer   = nullptr;
 	uint32_t         instanceCount = 1;
 };
 
@@ -83,18 +89,23 @@ struct CameraData
 	Matrix4x4 view;
 	Matrix4x4 proj;
 	float     eyePos[3] = {};
+	float     nearZ     = 0.1f;
+	float     farZ      = 1000.0f;
 };
 
 class RenderScene
 {
 public:
-	void SetCamera(const Matrix4x4& view, const Matrix4x4& proj, const Vector3& eye = {})
+	void SetCamera(const Matrix4x4& view, const Matrix4x4& proj, const Vector3& eye = {},
+	                float nearZ = 0.1f, float farZ = 1000.0f)
 	{
 		camera.view       = view;
 		camera.proj       = proj;
 		camera.eyePos[0]  = eye.x;
 		camera.eyePos[1]  = eye.y;
 		camera.eyePos[2]  = eye.z;
+		camera.nearZ      = nearZ;
+		camera.farZ       = farZ;
 	}
 
 	void AddCommand(const RenderCommand& cmd)
@@ -102,21 +113,25 @@ public:
 		commands.push_back(cmd);
 	}
 
-	void AddMesh(IMesh* mesh, const Matrix4x4& worldMatrix, SceneObjectID id = 0)
-	{
-		commands.push_back({ 0, id, mesh, worldMatrix, nullptr });
-	}
 
-	void AddMesh(IMesh* mesh, const Matrix4x4& worldMatrix, ITexture* texture, SceneObjectID id = 0)
+	void AddMesh(IMesh* mesh, const Matrix4x4& worldMatrix,
+	             IMaterial* material = nullptr,
+	             const RenderObjectDesc& desc = {})
 	{
-		commands.push_back({ 0, id, mesh, worldMatrix, texture });
+		RenderCommand cmd;
+		cmd.objectID    = desc.objectID;
+		cmd.mesh        = mesh;
+		cmd.worldMatrix = worldMatrix;
+		cmd.material    = material;
+		cmd.sortKey     = CalculateSortKey(worldMatrix, material, desc.layer);
+		commands.push_back(cmd);
 	}
 
 	void SortCommands()
 	{
 		if (commands.empty()) return;
 
-		VA_LOG("Scene", std::format("Sorting {} commands...", commands.size()));
+		VA_DRAW_PANEL(15, std::format("Scene: Sorting {} commands...", commands.size()));
 
 		std::sort(commands.begin(), commands.end(),
 			[](const RenderCommand& a, const RenderCommand& b)
@@ -126,38 +141,85 @@ public:
 
 		for (size_t i = 0; i < std::min<size_t>(5, commands.size()); ++i)
 		{
-			VA_LOG("Scene", std::format("  [{}] Key: 0x{:016x}", i, commands[i].sortKey));
+			VA_DRAW_PANEL(17 + i * 2, std::format("  [{}] Key: 0x{:016x}", i, commands[i].sortKey));
 		}
 	}
 
 	void AddSkinnedMesh(SkinnedMesh* mesh, const Matrix4x4& worldMatrix,
-	                    ITexture* texture, ITexture2DArray* transformsMap,
-	                    IBuffer* tweenBuffer, uint32_t instanceCount = 1)
+	                    ITexture2DArray* transformsMap,
+	                    IBuffer* tweenBuffer, uint32_t instanceCount = 1,
+	                    IMaterial* material = nullptr,
+	                    const RenderObjectDesc& desc = {})
 	{
-		skinnedCommands.push_back({ mesh, texture, transformsMap, tweenBuffer, worldMatrix, instanceCount });
+		RenderCommand cmd;
+		cmd.objectID      = desc.objectID;
+		cmd.skinnedMesh   = mesh;
+		cmd.material      = material;
+		cmd.transformsMap = transformsMap;
+		cmd.tweenBuffer   = tweenBuffer;
+		cmd.worldMatrix   = worldMatrix;
+		cmd.instanceCount = instanceCount;
+		cmd.sortKey       = CalculateSortKey(worldMatrix, material, desc.layer);
+		commands.push_back(cmd);
 	}
 
 	void SetLighting(const LightingState& lighting) { lightingState = lighting; }
 
 	void SetSkybox(ITexture* tex) { skyTexture = tex; }
 
+	// 런타임 디버그 토글 — Application이 키 입력 등으로 매 프레임 설정. 기본 true(항상 켜짐).
+	void SetSSAOEnabled(bool enabled) { ssaoEnabled = enabled; }
+	void SetIBLEnabled(bool enabled)  { iblEnabled  = enabled; }
+	// CSM 캐스케이드 색상 오버레이 — 기본 false(꺼짐). 켜면 픽셀이 속한 캐스케이드를 색으로 덧칠해
+	// split 경계·blend 구간이 씬의 어디에 걸리는지 육안으로 확인할 수 있다.
+	void SetShowCascades(bool enabled) { showCascades = enabled; }
+	// CSM 활성 캐스케이드 개수(1~8) — SceneRenderer::AddPasses가 매 프레임 ShadowMapRenderer로 전달.
+	// 실제 clamp는 ShadowMapRenderer::SetActiveCascadeCount()가 수행(리소스는 항상 8개 고정 할당).
+	void SetActiveCascadeCount(uint32_t count) { activeCascadeCount = count; }
+
 	void Clear()
 	{
 		commands.clear();
-		skinnedCommands.clear();
 		skyTexture = nullptr;
 	}
 
 	const CameraData&                        GetCamera()          const { return camera; }
 	const std::vector<RenderCommand>&        GetCommands()        const { return commands; }
-	const std::vector<SkinnedRenderCommand>& GetSkinnedCommands() const { return skinnedCommands; }
 	const LightingState&                     GetLighting()        const { return lightingState; }
 	ITexture*                                GetSkybox()          const { return skyTexture; }
+	bool                                      GetSSAOEnabled()    const { return ssaoEnabled; }
+	bool                                      GetIBLEnabled()     const { return iblEnabled; }
+	bool                                      GetShowCascades()   const { return showCascades; }
+	uint32_t                                  GetActiveCascadeCount() const { return activeCascadeCount; }
 
 private:
+	RenderSortKey CalculateSortKey(const Matrix4x4& worldMatrix, IMaterial* material,
+	                               uint8_t layer) const
+	{
+		SortKeyDesc desc;
+
+		// 1. Layer & Translucency
+		desc.layer       = layer;
+		desc.translucent = (material != nullptr && material->GetBlendMode() != EBlendMode::Opaque);
+		desc.pass        = 0;
+		desc.materialID  = material ? material->GetID() : uint16_t(0);
+
+		// 2. Depth calculation (distance from eye)
+		Vector3 objPos = GetWorldTranslation(worldMatrix);
+		Vector3 camPos = { camera.eyePos[0], camera.eyePos[1], camera.eyePos[2] };
+		
+		float dist = Vector3::Distance(objPos, camPos);
+		desc.depth = std::clamp(dist / camera.farZ, 0.0f, 1.0f);
+
+		return MakeSortKey(desc);
+	}
+
 	CameraData                        camera;
 	LightingState                     lightingState;
 	std::vector<RenderCommand>        commands;
-	std::vector<SkinnedRenderCommand> skinnedCommands;
 	ITexture*                         skyTexture = nullptr;
+	bool                               ssaoEnabled = true;
+	bool                               iblEnabled  = true;
+	bool                               showCascades = false;
+	uint32_t                           activeCascadeCount = 4;
 };

@@ -2,6 +2,9 @@
 
 #include "RHI/Texture/ITextureUAV.h"
 #include "RHI/DirectX/Common_DirectX.h"
+#include "RHI/IResourceView.h"
+
+#include <vector>
 
 class RenderDevice_DirectX;
 
@@ -14,16 +17,21 @@ public:
 	            EPixelFormat   format,
 	            uint32_t       width,
 	            uint32_t       height,
-	            uint32_t       arraySize = 1) override;
+	            uint32_t       arraySize = 1,
+	            uint32_t       mipLevels = 1) override;
 
-	void BindUAV(ICommandList* cmdList, uint32_t slot, bool isCompute) override;
+	void BindUAV(ICommandList* cmdList, uint32_t slot, bool isCompute, uint32_t mipSlice = 0) override;
 	void BindSRV(ICommandList* cmdList, uint32_t slot, bool isCompute) override;
+	IResourceView* GetRTV() const override { return rtvView.get(); }
 
 	void* GetNativeResource() const override { return textureResource.Get(); }
 
 private:
-	ComPtr<ID3D12Resource>      textureResource;
-	D3D12_GPU_DESCRIPTOR_HANDLE srvGpuHandle  = {};
-	D3D12_GPU_DESCRIPTOR_HANDLE uavGpuHandle  = {};
-	ID3D12DescriptorHeap*       globalSrvHeap = nullptr;
+	ComPtr<ID3D12Resource>         textureResource;
+	ComPtr<ID3D12DescriptorHeap>   rtvHeap;
+	std::unique_ptr<IResourceView> rtvView;
+
+	D3D12_GPU_DESCRIPTOR_HANDLE              srvGpuHandle  = {};
+	std::vector<D3D12_GPU_DESCRIPTOR_HANDLE> uavGpuHandles;  // 밉당 1개
+	ID3D12DescriptorHeap*                    globalSrvHeap = nullptr;
 };

@@ -3,6 +3,8 @@
 #include "RHI/IRenderDevice.h"
 #include "Common_DirectX.h"
 
+#include <functional>
+
 class RenderDevice_DirectX : public IRenderDevice
 {
 public:
@@ -14,8 +16,8 @@ public:
 	std::unique_ptr<IFence>			CreateFence() override;
 	std::unique_ptr<ICommandAlloc>	CreateCommandAllocator(const CommandAllocDesc& desc) override;
 	std::unique_ptr<ICommandList>	CreateCommandList(const CommandListDesc& desc) override;
-	std::unique_ptr<IBuffer>  CreateBuffer(const BufferDesc& desc) override;
-	std::unique_ptr<IShader>  CreateShader(const ShaderDesc& desc) override;
+	std::unique_ptr<IBuffer>		CreateBuffer(const BufferDesc& desc) override;
+	std::unique_ptr<IShader>		CreateShader(const ShaderDesc& desc) override;
 	std::unique_ptr<IBindingLayout>  CreateBindingLayout(const BindingEntry* entries, uint32_t count, bool isCompute = false) override;
 	std::unique_ptr<IPipelineState>  CreatePipelineState(const PipelineStateDesc& desc) override;
 	std::unique_ptr<IPipelineState>  CreateComputePipelineState(const ComputePipelineStateDesc& desc) override;
@@ -23,7 +25,10 @@ public:
 	std::unique_ptr<ITexture>        CreateTextureFloat() override;
 	std::unique_ptr<ITexture2DArray> CreateTexture2DArray() override;
 	std::unique_ptr<ITextureUAV>     CreateTextureUAV() override;
-	std::unique_ptr<IDepthBuffer>    CreateDepthBuffer(uint32_t width, uint32_t height, EPixelFormat format) override;
+	std::unique_ptr<IDepthBuffer>    CreateDepthBuffer(uint32_t width, uint32_t height, EPixelFormat format,
+	                                                    uint32_t arraySize = 1) override;
+	std::unique_ptr<IColorBuffer>    CreateColorBuffer(EPixelFormat format, uint32_t width, uint32_t height,
+	                                                    const float* optimizedClearColor = nullptr) override;
 	std::unique_ptr<IResourceView>   CreateBufferSRV(IBuffer* buffer, uint32_t numElements, uint32_t strideBytes) override;
 	std::unique_ptr<IResourceView>   CreateBufferUAV(IBuffer* buffer, uint32_t numElements, uint32_t strideBytes) override;
 
@@ -38,19 +43,39 @@ public:
 	};
 	SRVDescriptor AllocateSRVDescriptor();
 
+	// 복사 명령을 ICommandList 람다로 받아 즉시 실행하고 GPU 완료까지 대기
+	void ImmediateSubmit(std::function<void(ICommandList*)> recordFn) override;
+
+protected:
+	void Impl_RegisterDebugMessageCallback() override;
+
 private:
 	void EnableDebugLayer();
 	void CreateFactory();
 	void PickAdapter();
 	void CreateDevice();
+	void CreateUploadInfra();
+
+	// ID3D12InfoQueue1::RegisterMessageCallback 시그니처 — 심각도별로 분류해 VA_LOG로 전달
+	static void CALLBACK OnDebugMessage(D3D12_MESSAGE_CATEGORY category, D3D12_MESSAGE_SEVERITY severity,
+	                                     D3D12_MESSAGE_ID id, LPCSTR description, void* context);
 
 private:
 	ComPtr<IDXGIFactory6>        factory;
 	ComPtr<IDXGIAdapter4>        adapter;
 	ComPtr<ID3D12Device>         device;
+	DWORD                        debugCallbackCookie = 0;  // Impl_RegisterDebugMessageCallback 등록 해제용
 
 	ComPtr<ID3D12DescriptorHeap> globalSrvHeap;
 	uint32_t                     srvDescriptorSize = 0;
 	uint32_t                     srvAllocIndex     = 0;
 	static constexpr uint32_t    GLOBAL_SRV_HEAP_SIZE = 1024;
+
+	// Upload 전용 커맨드 인프라 (Initialize 시 1회 생성, 이후 재사용)
+	ComPtr<ID3D12CommandQueue>        uploadQueue;
+	ComPtr<ID3D12CommandAllocator>    uploadAlloc;
+	ComPtr<ID3D12GraphicsCommandList> uploadCmdList;
+	ComPtr<ID3D12Fence>               uploadFence;
+	uint64_t                          uploadFenceValue = 0;
+	HANDLE                            uploadFenceEvent = nullptr;
 };

@@ -39,7 +39,7 @@ void DebugTextRenderer::Initialize(IRenderDevice* device, const ShaderDesc& shad
         .shader           = shader.get(),
         .vertexInputs     = inputs,
         .vertexInputCount = 3,
-        .rtvFormat        = EPixelFormat::R8G8B8A8_UNORM,
+        .rtvFormats       = { EPixelFormat::R8G8B8A8_UNORM },
         .dsvFormat        = EPixelFormat::Unknown,
         .cullMode         = ECullMode::None,
         .blendMode        = EBlendMode::AlphaBlend,

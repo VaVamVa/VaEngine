@@ -70,48 +70,25 @@ void Texture2DArray_DX::Upload(IRenderDevice* iDevice,
     }
     uploadBuffer->Unmap(0, nullptr);
 
-    // 5. 일회성 커맨드로 복사
-    D3D12_COMMAND_QUEUE_DESC qDesc = { D3D12_COMMAND_LIST_TYPE_DIRECT };
-    ComPtr<ID3D12CommandQueue>        uploadQueue;
-    ComPtr<ID3D12CommandAllocator>    uploadAlloc;
-    ComPtr<ID3D12GraphicsCommandList> uploadCmd;
-    device->CreateCommandQueue(&qDesc, IID_PPV_ARGS(&uploadQueue));
-    device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&uploadAlloc));
-    device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT,
-                              uploadAlloc.Get(), nullptr, IID_PPV_ARGS(&uploadCmd));
-
-    for (UINT s = 0; s < subresourceCount; ++s)
+    // 5. 복사 명령 기록 및 GPU 완료 대기
+    RawResource texRes{ textureResource.Get() };
+    RawResource uplRes{ uploadBuffer.Get() };
+    rdDevice->ImmediateSubmit([&](ICommandList* cmdList)
     {
-        D3D12_TEXTURE_COPY_LOCATION dst = {};
-        dst.pResource        = textureResource.Get();
-        dst.Type             = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
-        dst.SubresourceIndex = s;
+        for (UINT s = 0; s < subresourceCount; ++s)
+        {
+            cmdList->CopyBufferToTexture(
+                &texRes, s,
+                &uplRes, footprints[s].Offset,
+                width, height,
+                footprints[s].Footprint.RowPitch);
+        }
 
-        D3D12_TEXTURE_COPY_LOCATION src = {};
-        src.pResource       = uploadBuffer.Get();
-        src.Type            = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
-        src.PlacedFootprint = footprints[s];
-
-        uploadCmd->CopyTextureRegion(&dst, 0, 0, 0, &src, nullptr);
-    }
-
-    auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(
-        textureResource.Get(),
-        D3D12_RESOURCE_STATE_COPY_DEST,
-        D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
-    uploadCmd->ResourceBarrier(1, &barrier);
-    uploadCmd->Close();
-
-    ID3D12CommandList* lists[] = { uploadCmd.Get() };
-    uploadQueue->ExecuteCommandLists(1, lists);
-
-    ComPtr<ID3D12Fence> fence;
-    device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&fence));
-    HANDLE event = CreateEventEx(nullptr, nullptr, 0, EVENT_ALL_ACCESS);
-    uploadQueue->Signal(fence.Get(), 1);
-    fence->SetEventOnCompletion(1, event);
-    WaitForSingleObject(event, INFINITE);
-    CloseHandle(event);
+        ResourceBarrier barrier{ &texRes,
+            EResourceState::CopyDest,
+            EResourceState::PixelShaderResource | EResourceState::NonPixelShaderResource };
+        cmdList->SetResourceBarrier(1, &barrier);
+    });
 
     // 6. 전역 SRV heap에서 슬롯 할당 후 SRV 생성
     auto srv = rdDevice->AllocateSRVDescriptor();
@@ -133,7 +110,11 @@ void Texture2DArray_DX::Bind(ICommandList* cmdList, uint32_t slot, bool isComput
     ID3D12DescriptorHeap* heaps[] = { globalSrvHeap };
     d3dCmd->SetDescriptorHeaps(1, heaps);
     if (isCompute)
+    {
         d3dCmd->SetComputeRootDescriptorTable(slot, srvGpuHandle);
+    }
     else
+    {
         d3dCmd->SetGraphicsRootDescriptorTable(slot, srvGpuHandle);
+    }
 }

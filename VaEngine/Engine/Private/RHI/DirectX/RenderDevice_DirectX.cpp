@@ -12,10 +12,11 @@
 #include "RHI/DirectX/Texture/TextureFloat_DirectX.h"
 #include "RHI/DirectX/Texture/Texture2DArray_DX.h"
 #include "RHI/DirectX/Texture/TextureUAV_DirectX.h"
+#include "RHI/DirectX/Buffer/ColorBuffer_DirectX.h"
 #include "RHI/DirectX/Shader/Shader_DirectX.h"
 #include "RHI/DirectX/DepthBuffer_DirectX.h"
 #include "RHI/DirectX/ResourceView_DirectX.h"
-#include "RHI/IRHIResource.h"
+#include "RHI/BaseRHIResource.h"
 #include "Utilities/DebuggingHelper.h"
 #include <format>
 
@@ -29,11 +30,30 @@ void RenderDevice_DirectX::Initialize()
     PickAdapter();
     // 4. D3D12 Device 생성
     CreateDevice();
-
+    // 5. GPU 검증 레이어 메시지 → VA_LOG 실시간 콜백 등록(NVI 훅, IRenderDevice.h 참조)
+    Impl_RegisterDebugMessageCallback();
+    // 6. 텍스처 업로드 전용 커맨드 인프라 초기화
+    CreateUploadInfra();
 }
 
 void RenderDevice_DirectX::Shutdown()
 {
+	if (uploadFenceEvent)
+	{
+		CloseHandle(uploadFenceEvent);
+		uploadFenceEvent = nullptr;
+	}
+
+#if defined(_DEBUG)
+	if (debugCallbackCookie != 0)
+	{
+		ComPtr<ID3D12InfoQueue1> infoQueue1;
+		if (SUCCEEDED(device.As(&infoQueue1)))
+			infoQueue1->UnregisterMessageCallback(debugCallbackCookie);
+		debugCallbackCookie = 0;
+	}
+#endif
+
 	device.Reset();
 	adapter.Reset();
 	factory.Reset();
@@ -172,7 +192,7 @@ std::unique_ptr<IResourceView> RenderDevice_DirectX::CreateBufferSRV(IBuffer* bu
 	device->CreateShaderResourceView(d3dResource, &srvDesc, slot.cpu);
 
 	ResourceViewDesc viewDesc{ EResourceViewType::ShaderResourceView, 1, 1 };
-	auto* bufferAsResource = static_cast<IRHIResource*>(buffer);
+	auto* bufferAsResource = static_cast<BaseRHIResource*>(buffer);
 	return std::make_unique<ResourceView_DirectX>(viewDesc, slot.cpu, slot.gpu, bufferAsResource);
 }
 
@@ -209,15 +229,25 @@ std::unique_ptr<IResourceView> RenderDevice_DirectX::CreateBufferUAV(IBuffer* bu
 	device->CreateUnorderedAccessView(d3dResource, nullptr, &uavDesc, slot.cpu);
 
 	ResourceViewDesc viewDesc{ EResourceViewType::UnorderedAccessView, 1, 1 };
-	auto* bufferAsResource = static_cast<IRHIResource*>(buffer);
+	auto* bufferAsResource = static_cast<BaseRHIResource*>(buffer);
 	return std::make_unique<ResourceView_DirectX>(viewDesc, slot.cpu, slot.gpu, bufferAsResource);
 }
 
-std::unique_ptr<IDepthBuffer> RenderDevice_DirectX::CreateDepthBuffer(uint32_t width, uint32_t height, EPixelFormat format)
+std::unique_ptr<IDepthBuffer> RenderDevice_DirectX::CreateDepthBuffer(uint32_t width, uint32_t height, EPixelFormat format,
+                                                                       uint32_t arraySize)
 {
-	VA_LOG("RHI", std::format("CreateDepthBuffer: {}x{}", width, height));
+	VA_LOG("RHI", std::format("CreateDepthBuffer: {}x{} x{}", width, height, arraySize));
 	auto buffer = std::make_unique<DepthBuffer_DirectX>();
-	buffer->Create(device.Get(), width, height, static_cast<DXGI_FORMAT>(format));
+	buffer->Create(this, width, height, static_cast<DXGI_FORMAT>(format), arraySize);
+	return buffer;
+}
+
+std::unique_ptr<IColorBuffer> RenderDevice_DirectX::CreateColorBuffer(EPixelFormat format, uint32_t width, uint32_t height,
+                                                                       const float* optimizedClearColor)
+{
+	VA_LOG("RHI", std::format("CreateColorBuffer: {}x{}", width, height));
+	auto buffer = std::make_unique<ColorBuffer_DirectX>();
+	buffer->Create(this, format, width, height, optimizedClearColor);
 	return buffer;
 }
 
@@ -303,7 +333,7 @@ void RenderDevice_DirectX::CreateDevice()
 
 #if defined(_DEBUG)
     {
-        // ID3D12InfoQueue 인터페이스를 사용하여 메시지 큐에 콜백을 등록하면 디버그 레이어에서 GPU 관련 오류를 더 자세히 볼 수 있음
+        // 실시간 메시지 콜백 등록은 Impl_RegisterDebugMessageCallback()(Initialize()가 CreateDevice() 직후 호출)에서 처리 — 여기서는 중단 조건만 설정
         ComPtr<ID3D12InfoQueue> infoQueue;
         if (SUCCEEDED(device.As(&infoQueue)))
         {
@@ -339,6 +369,34 @@ void RenderDevice_DirectX::CreateDevice()
     srvDescriptorSize = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 }
 
+void RenderDevice_DirectX::Impl_RegisterDebugMessageCallback()
+{
+#if defined(_DEBUG)
+    // ID3D12InfoQueue1은 Windows 11 22H2+/Agility SDK 필요 — 미지원 환경에서는 조용히 폴백
+    // (CreateDevice()에서 설정한 SetBreakOnSeverity만 유지, 실시간 콜백 없이 동작).
+    ComPtr<ID3D12InfoQueue1> infoQueue1;
+    if (FAILED(device.As(&infoQueue1)))
+        return;
+
+    infoQueue1->RegisterMessageCallback(&RenderDevice_DirectX::OnDebugMessage,
+                                         D3D12_MESSAGE_CALLBACK_FLAG_NONE, this, &debugCallbackCookie);
+#endif
+}
+
+void CALLBACK RenderDevice_DirectX::OnDebugMessage(D3D12_MESSAGE_CATEGORY /*category*/, D3D12_MESSAGE_SEVERITY severity,
+                                                     D3D12_MESSAGE_ID /*id*/, LPCSTR description, void* /*context*/)
+{
+    const char* logCategory = "D3D12-Info";
+    switch (severity)
+    {
+        case D3D12_MESSAGE_SEVERITY_CORRUPTION: logCategory = "D3D12-Corruption"; break;
+        case D3D12_MESSAGE_SEVERITY_ERROR:      logCategory = "D3D12-Error";      break;
+        case D3D12_MESSAGE_SEVERITY_WARNING:    logCategory = "D3D12-Warning";    break;
+        default: break;  // INFO / MESSAGE
+    }
+    DebuggingHelper::Log(logCategory, description);
+}
+
 RenderDevice_DirectX::SRVDescriptor RenderDevice_DirectX::AllocateSRVDescriptor()
 {
     if (srvAllocIndex >= GLOBAL_SRV_HEAP_SIZE)
@@ -351,4 +409,47 @@ RenderDevice_DirectX::SRVDescriptor RenderDevice_DirectX::AllocateSRVDescriptor(
     desc.gpu = CD3DX12_GPU_DESCRIPTOR_HANDLE(
         globalSrvHeap->GetGPUDescriptorHandleForHeapStart(), idx, srvDescriptorSize);
     return desc;
+}
+
+void RenderDevice_DirectX::CreateUploadInfra()
+{
+    D3D12_COMMAND_QUEUE_DESC qDesc = { D3D12_COMMAND_LIST_TYPE_DIRECT };
+    if (FAILED(device->CreateCommandQueue(&qDesc, IID_PPV_ARGS(&uploadQueue))))
+        throw std::runtime_error("Failed to create upload command queue");
+
+    if (FAILED(device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&uploadAlloc))))
+        throw std::runtime_error("Failed to create upload command allocator");
+
+    if (FAILED(device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT,
+                                          uploadAlloc.Get(), nullptr, IID_PPV_ARGS(&uploadCmdList))))
+        throw std::runtime_error("Failed to create upload command list");
+    uploadCmdList->Close();  // CommandList는 Open 상태로 생성되므로 즉시 Close
+
+    if (FAILED(device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&uploadFence))))
+        throw std::runtime_error("Failed to create upload fence");
+
+    uploadFenceEvent = CreateEventEx(nullptr, nullptr, 0, EVENT_ALL_ACCESS);
+    if (!uploadFenceEvent)
+        throw std::runtime_error("Failed to create upload fence event");
+
+    VA_LOG("RHI", "Upload infra initialized (reusable Direct queue)");
+}
+
+void RenderDevice_DirectX::ImmediateSubmit(
+    std::function<void(ICommandList*)> recordFn)
+{
+    uploadAlloc->Reset();
+    uploadCmdList->Reset(uploadAlloc.Get(), nullptr);
+
+    CommandList_DirectX tempCmd(uploadCmdList.Get());
+    recordFn(&tempCmd);
+
+    uploadCmdList->Close();
+    ID3D12CommandList* lists[] = { uploadCmdList.Get() };
+    uploadQueue->ExecuteCommandLists(1, lists);
+
+    ++uploadFenceValue;
+    uploadQueue->Signal(uploadFence.Get(), uploadFenceValue);
+    uploadFence->SetEventOnCompletion(uploadFenceValue, uploadFenceEvent);
+    WaitForSingleObject(uploadFenceEvent, INFINITE);
 }
